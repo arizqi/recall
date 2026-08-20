@@ -212,7 +212,7 @@ struct SearchView: View {
     private var detail: some View {
         if let transcript = store.transcript, let group = store.selected {
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+                LazyVStack(alignment: .leading, spacing: 14) {
                     HStack {
                         Button { store.closeDetail() } label: { Label("Results", systemImage: "chevron.left") }
                             .buttonStyle(.plain)
@@ -230,7 +230,14 @@ struct SearchView: View {
                     }
 
                     HStack(spacing: 8) {
-                        Button { store.copySelection() } label: { Label("Copy bundle", systemImage: "doc.on.doc") }
+                        Button { store.copySelection() } label: {
+                            if store.isExporting {
+                                Label("Building bundle…", systemImage: "hourglass")
+                            } else {
+                                Label("Copy bundle", systemImage: "doc.on.doc")
+                            }
+                        }
+                        .disabled(store.isExporting)
                         Button { store.summarize() } label: {
                             if store.summarizingIDs.contains(transcript.conversation.id) {
                                 Label("Summarizing…", systemImage: "hourglass")
@@ -262,15 +269,47 @@ struct SearchView: View {
                             .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.09)))
                     }
 
-                    Text("Transcript").font(.subheadline.weight(.semibold))
-                    Text(transcript.text)
-                        .font(.system(size: 11.5, design: .monospaced))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack {
+                        Text("Transcript").font(.subheadline.weight(.semibold))
+                        Spacer()
+                        Text("\(store.rows.count) blocks").font(.caption2).foregroundStyle(.tertiary)
+                    }
+                    // One Text per row, lazily. A single Text holding the whole
+                    // conversation typesets eagerly through CoreText and hangs the
+                    // main thread for minutes on a large session.
+                    ForEach(store.rows) { row in
+                        transcriptRow(row)
+                    }
                 }
                 .padding(16)
             }
         }
+    }
+
+    private func transcriptRow(_ row: TranscriptRow) -> some View {
+        let expanded = store.expandedRowIDs.contains(row.id)
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text(row.continuation ? "\(row.role.transcriptLabel) (cont.)" : row.role.transcriptLabel)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(row.role == .user ? accent : Color.secondary)
+                Text(DateFormatter.minute.string(from: row.ts))
+                    .font(.caption2).foregroundStyle(.tertiary)
+                Spacer()
+            }
+            Text(row.displayText(expanded: expanded))
+                .font(.system(size: 11.5, design: .monospaced))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if row.isTruncated {
+                Button(expanded ? "Show less" : row.truncationLabel) {
+                    store.toggleExpansion(row)
+                }
+                .buttonStyle(.link)
+                .font(.caption2)
+            }
+        }
+        .padding(.vertical, 2)
     }
 
     @ViewBuilder
@@ -312,9 +351,19 @@ struct SearchView: View {
                 Text("Local index · no cloud calls").font(.caption2).foregroundStyle(.secondary)
             }
             Spacer()
-            Button { store.copySelection() } label: { Label("Copy ⇧⌘C", systemImage: "doc.on.doc") }
-                .keyboardShortcut("c", modifiers: [.command, .shift])
-                .buttonStyle(.borderedProminent)
+            Button { store.copySelection() } label: {
+                if store.isExporting {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Building…")
+                    }
+                } else {
+                    Label("Copy ⇧⌘C", systemImage: "doc.on.doc")
+                }
+            }
+            .keyboardShortcut("c", modifiers: [.command, .shift])
+            .buttonStyle(.borderedProminent)
+            .disabled(store.isExporting)
             Button("Quit") { NSApplication.shared.terminate(nil) }
                 .buttonStyle(.plain).font(.caption)
         }

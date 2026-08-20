@@ -89,7 +89,7 @@ final class SearchViewSnapshotTests: XCTestCase {
         store.query = "rooms directory"
         await store.search()?.value
         let group = try XCTUnwrap(store.results.first)
-        store.open(group)
+        await store.open(group)?.value
 
         let transcript = try XCTUnwrap(store.transcript)
         XCTAssertFalse(transcript.reconstructed)

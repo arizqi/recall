@@ -60,7 +60,10 @@ enum RecallText {
     }
 
     static func clipped(_ text: String, length: Int) -> String {
-        let clean = normalized(text)
+        // Only the window that could possibly be displayed is normalized. Running a
+        // regex over a multi-megabyte message to show 260 characters of it is how a
+        // preview turns into a beachball.
+        let clean = normalized(String(text.prefix(length * 8)))
         guard clean.count > length else { return clean }
         let end = clean.index(clean.startIndex, offsetBy: length)
         let prefix = String(clean[..<end])
@@ -71,7 +74,7 @@ enum RecallText {
     }
 
     static func title(from text: String) -> String {
-        let clean = normalized(text)
+        let clean = normalized(String(text.prefix(2_000)))
         guard !clean.isEmpty else { return "Untitled conversation" }
         let sentence = clean.split(whereSeparator: { ".!?\n".contains($0) }).first.map(String.init) ?? clean
         return clipped(sentence, length: 82)

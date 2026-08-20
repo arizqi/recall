@@ -18,6 +18,10 @@ final class RecallStore: ObservableObject {
 
     @Published var selected: ConversationHits?
     @Published private(set) var transcript: Transcript?
+    /// Precomputed display slices; the view never sees a whole-transcript string.
+    @Published private(set) var rows: [TranscriptRow] = []
+    @Published var expandedRowIDs = Set<Int>()
+    @Published private(set) var isExporting = false
     @Published private(set) var summaries: [String: ConversationSummary] = [:]
     @Published private(set) var summarizingIDs = Set<String>()
     @Published private(set) var status: String?
@@ -137,56 +141,139 @@ final class RecallStore: ObservableObject {
         return searchTask
     }
 
-    func open(_ group: ConversationHits) {
-        guard let store else { return }
+    @discardableResult
+    func open(_ group: ConversationHits) -> Task<Void, Never>? {
+        guard let store else { return nil }
         selected = group
-        transcript = TranscriptProvider(store: store).transcript(for: group.id)
+        expandedRowIDs = []
+        rows = []
+        // Reading and slicing happen off the main thread: a large session is several
+        // megabytes of JSONL, and the click that opens it must not block the UI.
+        return Task.detached(priority: .userInitiated) {
+            let transcript = TranscriptProvider(store: store).transcript(for: group.id)
+            let rows = transcript.map { TranscriptRows.rows(for: $0) } ?? []
+            await MainActor.run {
+                guard self.selected?.id == group.id else { return }
+                self.transcript = transcript
+                self.rows = rows
+            }
+        }
     }
 
     func closeDetail() {
         selected = nil
         transcript = nil
+        rows = []
+        expandedRowIDs = []
+    }
+
+    func toggleExpansion(_ row: TranscriptRow) {
+        if expandedRowIDs.contains(row.id) {
+            expandedRowIDs.remove(row.id)
+        } else {
+            expandedRowIDs.insert(row.id)
+        }
     }
 
     // MARK: - Export
 
     /// ⇧⌘C: the whole point of the app — one keystroke from "I remember discussing
     /// this" to a pasteable bundle.
+    /// Assembling a bundle concatenates the whole conversation, which is exactly the
+    /// work the display path refuses to do — so it happens off the main thread with
+    /// a spinner rather than on it with a beachball.
     func copySelection() {
-        guard let markdown = markdownForSelection() else {
-            note("Nothing selected to copy.")
-            return
+        guard !isExporting else { return }
+        let request = exportRequest()
+        isExporting = true
+        Task.detached(priority: .userInitiated) {
+            let markdown = RecallStore.markdown(for: request)
+            await MainActor.run {
+                self.isExporting = false
+                guard let markdown else { return self.note("Nothing selected to copy.") }
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(markdown, forType: .string)
+                self.note("Copied \(markdown.count.formatted()) characters.")
+            }
         }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(markdown, forType: .string)
-        note("Copied \(markdown.count) characters.")
-    }
-
-    func markdownForSelection() -> String? {
-        if let transcript {
-            let body: ExportBody = summaries[transcript.conversation.id].map { .summary($0.markdown) } ?? .transcript
-            return ExportFormatter.bundle(for: transcript, body: body)
-        }
-        guard let store, !results.isEmpty else { return nil }
-        let provider = TranscriptProvider(store: store)
-        let bundles = results.prefix(5).map { group in
-            (provider.transcript(for: group.id) ?? emptyTranscript(group), ExportBody.transcript)
-        }
-        return ExportFormatter.bundle(for: bundles, query: query)
     }
 
     func saveSelection() {
-        guard let transcript, let markdown = markdownForSelection() else { return }
+        guard !isExporting, let transcript else { return }
         let panel = NSSavePanel()
         panel.nameFieldStringValue = ExportFormatter.filename(for: transcript)
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            try Data(markdown.utf8).write(to: url)
-            note("Saved \(url.lastPathComponent).")
-        } catch {
-            failure = error.localizedDescription
+
+        let request = exportRequest()
+        isExporting = true
+        Task.detached(priority: .userInitiated) {
+            let markdown = RecallStore.markdown(for: request)
+            await MainActor.run {
+                self.isExporting = false
+                guard let markdown else { return }
+                do {
+                    try Data(markdown.utf8).write(to: url)
+                    self.note("Saved \(url.lastPathComponent).")
+                } catch {
+                    self.failure = error.localizedDescription
+                }
+            }
         }
+    }
+
+    func markdownForSelection() -> String? {
+        RecallStore.markdown(for: exportRequest())
+    }
+
+    /// Everything the bundle needs, snapshotted on the main actor so the assembly
+    /// itself can run anywhere.
+    struct ExportRequest: Sendable {
+        var transcript: Transcript?
+        var summary: String?
+        var groupIDs: [String] = []
+        var fallbacks: [String: ConversationRecord] = [:]
+        var query = ""
+        var store: IndexStore?
+        var sources: [any EventSource] = []
+    }
+
+    private func exportRequest() -> ExportRequest {
+        var request = ExportRequest(query: query, store: store)
+        request.sources = Paths.defaultSources()
+        if let transcript {
+            request.transcript = transcript
+            request.summary = summaries[transcript.conversation.id]?.markdown
+            return request
+        }
+        // A search-selection export takes the top few conversations.
+        let groups = Array(results.prefix(5))
+        request.groupIDs = groups.map(\.id)
+        for group in groups { request.fallbacks[group.id] = Self.placeholder(group) }
+        return request
+    }
+
+    nonisolated static func markdown(for request: ExportRequest) -> String? {
+        if let transcript = request.transcript {
+            return ExportFormatter.bundle(
+                for: transcript,
+                body: request.summary.map { ExportBody.summary($0) } ?? .transcript
+            )
+        }
+        guard let store = request.store, !request.groupIDs.isEmpty else { return nil }
+        let provider = TranscriptProvider(store: store, sources: request.sources)
+        let bundles = request.groupIDs.map { id in
+            (
+                provider.transcript(for: id)
+                    ?? Transcript(
+                        conversation: request.fallbacks[id]!,
+                        events: [],
+                        reconstructed: true
+                    ),
+                ExportBody.transcript
+            )
+        }
+        return ExportFormatter.bundle(for: bundles, query: request.query)
     }
 
     func summarize() {
@@ -221,15 +308,11 @@ final class RecallStore: ObservableObject {
 
     // MARK: - Helpers
 
-    private func emptyTranscript(_ group: ConversationHits) -> Transcript {
-        Transcript(
-            conversation: ConversationRecord(
-                id: group.id, source: group.source, title: group.title,
-                startedAt: group.date, endedAt: group.date, filePath: "",
-                chunkCount: group.hits.count, artifactPaths: []
-            ),
-            events: [],
-            reconstructed: true
+    private static func placeholder(_ group: ConversationHits) -> ConversationRecord {
+        ConversationRecord(
+            id: group.id, source: group.source, title: group.title,
+            startedAt: group.date, endedAt: group.date, filePath: "",
+            chunkCount: group.hits.count, artifactPaths: []
         )
     }
 
