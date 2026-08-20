@@ -98,8 +98,49 @@ struct SearchView: View {
             .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color(nsColor: .textBackgroundColor)))
 
             sourceChips
+            controls
         }
         .padding(16)
+    }
+
+    /// Sort and date live next to each other because they answer the same question:
+    /// "which slice of history am I looking at, and in what order".
+    private var controls: some View {
+        HStack(spacing: 10) {
+            Picker("", selection: sortBinding) {
+                ForEach(SearchSort.allCases) { option in
+                    Text(option.label).tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 170)
+
+            Picker("", selection: dateBinding) {
+                ForEach(DateWindow.Preset.allCases) { preset in
+                    Text(preset.rawValue).tag(preset)
+                }
+            }
+            .labelsHidden()
+            .frame(width: 150)
+
+            Spacer()
+            if store.query.isEmpty {
+                Text("Recent conversations").font(.caption2).foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    private var sortBinding: Binding<SearchSort> {
+        Binding(get: { store.sort }, set: { store.sort = $0; store.search() })
+    }
+
+    private var dateBinding: Binding<DateWindow.Preset> {
+        Binding(get: { store.datePreset }, set: {
+            store.datePreset = $0
+            store.refreshRecent()
+            store.search()
+        })
     }
 
     private var sourceChips: some View {
@@ -118,6 +159,7 @@ struct SearchView: View {
         let isSelected = store.sourceFilter == source
         return Button {
             store.sourceFilter = source
+            store.refreshRecent()
             store.search()
         } label: {
             Text("\(label) \(count)")
@@ -145,9 +187,19 @@ struct SearchView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 10) {
                 if let failure = store.failure { banner(failure, systemImage: "exclamationmark.triangle.fill") }
-                if store.results.isEmpty { emptyState }
-                ForEach(store.results) { group in
-                    resultRow(group)
+                ForEach(store.coverage) { coverage in
+                    banner(coverage.detail, systemImage: "cloud.fill")
+                }
+                if store.query.isEmpty {
+                    if store.recent.isEmpty { emptyState }
+                    ForEach(store.recent) { record in
+                        recentRow(record)
+                    }
+                } else {
+                    if store.results.isEmpty { emptyState }
+                    ForEach(store.results) { group in
+                        resultRow(group)
+                    }
                 }
             }
             .padding(16)
@@ -188,18 +240,39 @@ struct SearchView: View {
         .buttonStyle(.plain)
     }
 
+    /// The browse list: newest first, no query needed.
+    private func recentRow(_ record: ConversationRecord) -> some View {
+        Button { store.openRecent(record) } label: {
+            HStack(spacing: 8) {
+                Text(RecallSource.label(record.source))
+                    .font(.caption2.weight(.semibold))
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Capsule().fill(accent.opacity(0.15)))
+                Text(record.title).font(.system(size: 12.5)).lineLimit(1)
+                Spacer()
+                Text(DateFormatter.minute.string(from: record.endedAt))
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.6)))
+        }
+        .buttonStyle(.plain)
+    }
+
     private var emptyState: some View {
         VStack(spacing: 8) {
             Image(systemName: store.query.isEmpty ? "magnifyingglass" : "questionmark.folder")
                 .font(.system(size: 26)).foregroundStyle(.tertiary)
-            Text(store.query.isEmpty ? "Search your Claude Code, Cowork, Room, inbox and ChatGPT history."
+            Text(store.query.isEmpty ? "Search your Claude Code, Cowork, Room, inbox and imported history."
                                      : "No matches for “\(store.query)”.")
                 .font(.callout).foregroundStyle(.secondary)
             if !store.missingSources.isEmpty {
                 Text("Not on this Mac: " + store.missingSources.joined(separator: ", "))
                     .font(.caption2).foregroundStyle(.tertiary)
             }
-            Text("Drop a ChatGPT export .zip here to import it.")
+            Text("Drop a ChatGPT or claude.ai export .zip here to import it.")
                 .font(.caption2).foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity)
@@ -260,7 +333,9 @@ struct SearchView: View {
 
                     artifacts(for: transcript)
 
-                    Text("Matched fragments").font(.subheadline.weight(.semibold))
+                    if !group.hits.isEmpty {
+                        Text("Matched fragments").font(.subheadline.weight(.semibold))
+                    }
                     ForEach(group.hits.prefix(5)) { hit in
                         Text(RecallText.clipped(hit.chunk.text, length: 600))
                             .font(.system(size: 11.5, design: .monospaced))
@@ -383,7 +458,7 @@ struct SearchView: View {
         guard let provider = providers.first else { return false }
         _ = provider.loadObject(ofClass: URL.self) { url, _ in
             guard let url, ["zip", "json"].contains(url.pathExtension.lowercased()) else { return }
-            Task { @MainActor in store.importChatGPTExport(at: url) }
+            Task { @MainActor in store.importExport(at: url) }
         }
         return true
     }

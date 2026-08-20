@@ -30,10 +30,22 @@ struct ConversationHits: Hashable, Sendable, Identifiable {
     var best: SearchHit { hits[0] }
 }
 
+enum SearchSort: String, CaseIterable, Identifiable, Sendable {
+    /// Newest first. The default: most of the time "what did I say about X" means
+    /// the most recent time you said it.
+    case date
+    case relevance
+
+    var id: String { rawValue }
+    var label: String { self == .date ? "Date" : "Relevance" }
+}
+
 struct SearchOptions: Sendable {
     var limit: Int = 25
     var candidates: Int = 200
     var sources: Set<String> = []
+    var window: DateWindow = .any
+    var sort: SearchSort = .date
     /// Weights for reciprocal-rank fusion. Vector leads; keyword is the safety net
     /// for exact identifiers the embedding blurs away.
     var vectorWeight: Double = 1.0
@@ -130,6 +142,9 @@ struct SearchEngine: Sendable {
         for entry in fused {
             guard let chunk = hydrated[entry.id] else { continue }
             if !options.sources.isEmpty, !options.sources.contains(chunk.source) { continue }
+            // A fragment counts if any part of it falls inside the window.
+            if !options.window.isAny,
+               !options.window.contains(chunk.endsAt), !options.window.contains(chunk.startsAt) { continue }
             if byConversation[chunk.conversationId] == nil { order.append(chunk.conversationId) }
             byConversation[chunk.conversationId, default: []].append(SearchHit(
                 chunk: chunk,
@@ -151,7 +166,14 @@ struct SearchEngine: Sendable {
                     hits: hits
                 )
             }
-            .sorted { $0.score == $1.score ? $0.date > $1.date : $0.score > $1.score }
+            .sorted { first, second in
+                switch options.sort {
+                case .date:
+                    first.date == second.date ? first.score > second.score : first.date > second.date
+                case .relevance:
+                    first.score == second.score ? first.date > second.date : first.score > second.score
+                }
+            }
             .prefix(options.limit)
             .map { $0 }
     }

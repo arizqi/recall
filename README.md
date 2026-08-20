@@ -22,14 +22,37 @@ SQLite file in Application Support, and nothing is ever uploaded.
 | Source | Location | Notes |
 | --- | --- | --- |
 | Claude Code | `~/.claude/projects/*/*.jsonl` | Top-level sessions only; nested `subagents/` transcripts are skipped as duplicates. |
-| Cowork | `~/Library/Application Support/Claude/local-agent-mode-sessions/**/audit.jsonl` | Title comes from the sibling `local_*.json`. |
+| Cowork | `~/Library/Application Support/Claude/local-agent-mode-sessions/**/audit.jsonl` | Title comes from the sibling `local_*.json`. Local transcripts stop after 2026-08-14 — see below. |
 | Rooms | `~/.company-os/hermes-home/company/rooms/*.jsonl` | Just a directory of JSONL. Recall never talks to Company OS and does not care whether it is installed or running. A room is an append-only log, so it is indexed one conversation per day. |
 | Inbox | `~/Library/Application Support/Recall/inbox/*.jsonl` | The bus: any tool can drop normalized events here. |
-| ChatGPT | account export `.zip` | Converted to normalized JSONL under `~/Library/Application Support/Recall/imports/`. Drag the zip onto the window, or `recall import-chatgpt export.zip`. |
+| ChatGPT | account export `.zip` | Converted to normalized JSONL under `~/Library/Application Support/Recall/imports/`. Drag the zip onto the window, or `recall import export.zip`. |
+| claude.ai | account export `.zip` | Same path. This is where Cowork and web chats live now. |
 
 Every reader is isolated and covered by a fixture test. These are private storage
 formats that change without notice; when one does, the failing fixture tells you
 which reader to fix in a minute rather than an afternoon.
+
+### Cowork after 2026-08-14: cloud-only
+
+Claude Desktop moved Cowork to remote sessions, and it no longer writes transcripts
+to this Mac. Verified on 2026-08-20:
+
+- the newest `audit.jsonl` anywhere under the session directory is dated 2026-08-14,
+  while the directory itself is written every day;
+- `remote-session-spaces.json` (current) records server-side `session_01…` ids and
+  the folders each session may read — no message content;
+- the Cowork VM image `vm_bundles/claudevm.bundle/sessiondata.img` contains no string
+  newer than 2026-08-04, and the `.claude/projects/*.jsonl` paths inside it are from
+  March–April;
+- the `cowork-artifact` and `cowork-file-preview` partitions hold only Chromium
+  caches, and the `claude.ai` IndexedDB `keyval-store` holds composer drafts, not
+  transcripts;
+- no other recent `.jsonl` exists anywhere under `~` outside the known sources.
+
+Recall detects this rather than asserting it: when the Cowork directory keeps being
+written but the newest indexed transcript is more than three days older, the UI shows
+a coverage row saying the sessions are cloud-only and pointing at the export. To
+search them, request a claude.ai account export and import the zip.
 
 Missing directories are reported, not hidden — a source you do not have shows as
 "no directory at …" instead of silently contributing nothing.
@@ -104,6 +127,18 @@ scores from its best five fragments with diminishing returns, so several good hi
 beat one lucky hit while a sprawling thread that mentions the topic forty times in
 passing cannot crowd out the short conversation that is actually about it.
 
+Results are **newest first by default** — most of the time "what did I say about X"
+means the most recent time you said it — with a visible Date ↔ Relevance toggle when
+you want the strongest match instead. Either way the candidate pool is chosen by
+relevance first, so date order ranks the relevant, not the merely recent.
+
+A date filter narrows both search and the browse list: presets in the UI, and
+`--since` / `--until` on the CLI taking either a calendar date (`2026-08-19`) or a
+relative span (`7d`, `2w`, `3m`, `1y`). A date the CLI cannot parse is an error, not
+a silent "any time" — searching the wrong window looks exactly like missing data.
+
+With an empty query the window is a browse list of the newest conversations.
+
 If Ollama is not running, search degrades to keyword-only instead of returning
 nothing, and says so in the footer.
 
@@ -118,14 +153,16 @@ that no longer exist are marked `_(missing)_` rather than quietly dropped.
 
 ```bash
 recall index [--force] [--no-embeddings] [--max-files N] [--source ID]
-recall search "deepseek rebind" [--limit N] [--source ID] [--json]
+recall search "deepseek rebind" [--limit N] [--source ID] [--since 7d] [--until 2026-08-19]
+                                [--sort date|relevance] [--json]
+recall recent [--limit N] [--source ID] [--since 7d] [--json]
 recall export <conversation-id> [--summary] [--out FILE]
 recall status
-recall import-chatgpt ~/Downloads/export.zip
+recall import ~/Downloads/export.zip        # ChatGPT or claude.ai, detected from the file
 ```
 
-`--json` makes `recall search` scriptable. `--no-embeddings` indexes text only for
-a fast first pass; a later run fills the vectors in.
+`--json` makes `recall search` and `recall recent` scriptable. `--no-embeddings`
+indexes text only for a fast first pass; a later run fills the vectors in.
 
 ## Build
 

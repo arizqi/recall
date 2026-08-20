@@ -5,6 +5,11 @@ import Foundation
 final class RecallStore: ObservableObject {
     @Published var query = ""
     @Published var sourceFilter: String?
+    @Published var sort: SearchSort = .date
+    @Published var datePreset: DateWindow.Preset = .any
+    /// Newest conversations, shown when there is no query — the browse view.
+    @Published private(set) var recent: [ConversationRecord] = []
+    @Published private(set) var coverage: [SourceCoverage] = []
     @Published private(set) var results: [ConversationHits] = []
     @Published private(set) var isSearching = false
     @Published private(set) var lastSearchMilliseconds: Int?
@@ -56,6 +61,36 @@ final class RecallStore: ObservableObject {
         missingSources = Paths.defaultSources()
             .filter { !FileManager.default.fileExists(atPath: $0.root.path) }
             .map(\.displayName)
+        refreshRecent()
+        refreshCoverage()
+    }
+
+    func refreshRecent() {
+        guard let store else { return }
+        recent = store.recentConversations(
+            limit: 40,
+            window: datePreset.window(),
+            sources: sourceFilter.map { [$0] } ?? []
+        )
+    }
+
+    /// Coverage is checked off the main thread: it walks the Cowork session tree.
+    private func refreshCoverage() {
+        guard let store else { return }
+        let coworkRoot = Paths.coworkSessions
+        let lastIndexed = store.recentConversations(limit: 1, sources: [RecallSource.cowork]).first?.endedAt
+        Task.detached(priority: .utility) {
+            let exists = FileManager.default.fileExists(atPath: coworkRoot.path)
+            let touched = exists ? CoworkCoverage.directoryTouched(at: coworkRoot) : nil
+            let coverage = CoworkCoverage.coverage(
+                directoryExists: exists,
+                lastIndexed: lastIndexed,
+                directoryTouched: touched
+            )
+            await MainActor.run {
+                self.coverage = coverage.isProblem ? [coverage] : []
+            }
+        }
     }
 
     func index(force: Bool = false) {
@@ -96,10 +131,11 @@ final class RecallStore: ObservableObject {
         indexProgress = nil
     }
 
-    func importChatGPTExport(at url: URL) {
+    /// Drag in either vendor's account export; the format is detected from the file.
+    func importExport(at url: URL) {
         do {
-            let result = try ChatGPTImporter().importArchive(at: url)
-            note("Imported \(result.conversations) ChatGPT conversations — indexing…")
+            let result = try ExportImporter().importArchive(at: url)
+            note("Imported \(result.conversations) \(RecallSource.label(result.kind.source)) conversations — indexing…")
             index()
         } catch {
             failure = error.localizedDescription
@@ -121,6 +157,8 @@ final class RecallStore: ObservableObject {
         isSearching = true
         var options = SearchOptions(limit: 40)
         if let sourceFilter { options.sources = [sourceFilter] }
+        options.window = datePreset.window()
+        options.sort = sort
 
         searchTask = Task { [embedder] in
             let engine = SearchEngine(store: store, embedder: embedder)
@@ -158,6 +196,20 @@ final class RecallStore: ObservableObject {
                 self.rows = rows
             }
         }
+    }
+
+    /// Opening from the browse list: there are no matched fragments, so the detail
+    /// view shows the transcript alone.
+    @discardableResult
+    func openRecent(_ record: ConversationRecord) -> Task<Void, Never>? {
+        open(ConversationHits(
+            id: record.id,
+            source: record.source,
+            title: record.title,
+            date: record.endedAt,
+            score: 0,
+            hits: []
+        ))
     }
 
     func closeDetail() {

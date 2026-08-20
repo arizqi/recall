@@ -511,15 +511,40 @@ final class IndexStore: @unchecked Sendable {
         }
     }
 
-    func recentConversations(limit: Int) -> [ConversationRecord] {
+    func recentConversations(
+        limit: Int,
+        window: DateWindow = .any,
+        sources: Set<String> = []
+    ) -> [ConversationRecord] {
         queue.sync {
             var statement: OpaquePointer?
             defer { sqlite3_finalize(statement) }
+            var conditions: [String] = []
+            if window.since != nil { conditions.append("ended_at >= ?") }
+            if window.until != nil { conditions.append("started_at <= ?") }
+            if !sources.isEmpty {
+                conditions.append("source IN (\(Array(repeating: "?", count: sources.count).joined(separator: ",")))")
+            }
+            let filter = conditions.isEmpty ? "" : "WHERE " + conditions.joined(separator: " AND ")
             guard sqlite3_prepare_v2(db, """
             SELECT id, source, title, started_at, ended_at, file_path, chunk_count, artifact_paths
-            FROM conversations ORDER BY ended_at DESC LIMIT ?;
+            FROM conversations \(filter) ORDER BY ended_at DESC LIMIT ?;
             """, -1, &statement, nil) == SQLITE_OK else { return [] }
-            sqlite3_bind_int64(statement, 1, Int64(limit))
+
+            var index: Int32 = 1
+            if let since = window.since {
+                sqlite3_bind_double(statement, index, since.timeIntervalSince1970)
+                index += 1
+            }
+            if let until = window.until {
+                sqlite3_bind_double(statement, index, until.timeIntervalSince1970)
+                index += 1
+            }
+            for source in sources.sorted() {
+                bind(statement, index, source)
+                index += 1
+            }
+            sqlite3_bind_int64(statement, index, Int64(limit))
             var result: [ConversationRecord] = []
             while sqlite3_step(statement) == SQLITE_ROW { result.append(Self.conversation(from: statement)) }
             return result

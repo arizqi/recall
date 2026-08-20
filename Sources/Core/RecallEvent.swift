@@ -59,8 +59,11 @@ enum RecallSource {
     static let room = "room"
     static let inbox = "inbox"
     static let chatgpt = "chatgpt"
+    static let claudeAI = "claude-ai"
+    /// Where converted account exports land; events inside declare their own source.
+    static let imports = "imports"
 
-    static let known = [claudeCode, cowork, room, inbox, chatgpt]
+    static let known = [claudeCode, cowork, room, inbox, chatgpt, claudeAI]
 
     static func label(_ raw: String) -> String {
         switch raw {
@@ -69,6 +72,8 @@ enum RecallSource {
         case room: "Room"
         case inbox: "Inbox"
         case chatgpt: "ChatGPT"
+        case claudeAI: "claude.ai"
+        case imports: "Imports"
         default: raw.capitalized
         }
     }

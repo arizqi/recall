@@ -154,7 +154,9 @@ final class NormalizationTests: XCTestCase {
             "n1":{"message":{"author":{"role":"user"},"create_time":1786360100,"content":{"parts":["How do I rank results?"]}}}
           }}]
         """
-        let events = ChatGPTImporter.events(fromConversationsJSON: Data(json.utf8))
+        let parsed = ExportImporter.events(fromConversationsJSON: Data(json.utf8))
+        XCTAssertEqual(parsed.kind, .chatgpt)
+        let events = parsed.events
         XCTAssertEqual(events.map(\.role), [.user, .assistant])
         XCTAssertEqual(events[0].conversationId, "chatgpt:c1")
         XCTAssertEqual(events[0].title, "Vector search")

@@ -35,7 +35,7 @@ enum Paths {
             CoworkSource(),
             RoomSource(),
             NormalizedJSONLSource(id: RecallSource.inbox, root: inbox),
-            NormalizedJSONLSource(id: RecallSource.chatgpt, root: imports),
+            NormalizedJSONLSource(id: RecallSource.imports, root: imports),
         ]
     }
 }
