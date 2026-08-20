@@ -24,20 +24,25 @@ final class RecallStore: ObservableObject {
     @Published private(set) var failure: String?
 
     private var store: IndexStore?
-    private let embedder = OllamaEmbedder()
+    private let embedder: any Embedder
     private var searchTask: Task<Void, Never>?
     private var indexTask: Task<Void, Never>?
     private var statusResetTask: Task<Void, Never>?
 
-    init() {
+    /// The index location and embedder are injectable so tests can drive the real
+    /// view against a temporary index without a model.
+    init(indexURL: URL = Paths.indexDatabase, embedder: any Embedder = OllamaEmbedder()) {
+        self.embedder = embedder
         Paths.ensureDirectories()
         do {
-            store = try IndexStore()
+            store = try IndexStore(url: indexURL)
         } catch {
             failure = error.localizedDescription
         }
         refreshStats()
     }
+
+    var indexStore: IndexStore? { store }
 
     // MARK: - Index
 
@@ -54,9 +59,9 @@ final class RecallStore: ObservableObject {
         isIndexing = true
         indexReport = nil
         indexTask = Task { [embedder] in
-            if await !embedder.isReachable() {
+            if let ollama = embedder as? OllamaEmbedder, await !ollama.isReachable() {
                 OllamaEmbedder.startIfInstalled()
-                for _ in 0..<20 where await !embedder.isReachable() {
+                for _ in 0..<20 where await !ollama.isReachable() {
                     try? await Task.sleep(for: .milliseconds(500))
                 }
             }
@@ -99,14 +104,15 @@ final class RecallStore: ObservableObject {
 
     // MARK: - Search
 
-    func search() {
-        guard let store else { return }
+    @discardableResult
+    func search() -> Task<Void, Never>? {
+        guard let store else { return nil }
         let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
         searchTask?.cancel()
         guard !text.isEmpty else {
             results = []
             lastSearchMilliseconds = nil
-            return
+            return nil
         }
         isSearching = true
         var options = SearchOptions(limit: 40)
@@ -115,7 +121,8 @@ final class RecallStore: ObservableObject {
         searchTask = Task { [embedder] in
             let engine = SearchEngine(store: store, embedder: embedder)
             let started = Date()
-            let reachable = await embedder.isReachable()
+            // A non-Ollama embedder (tests) is always available.
+            let reachable = await (embedder as? OllamaEmbedder)?.isReachable() ?? true
             let hits = reachable
                 ? await engine.search(text, options: options)
                 : engine.keywordOnlySearch(text, options: options)
@@ -127,6 +134,7 @@ final class RecallStore: ObservableObject {
                 self.isSearching = false
             }
         }
+        return searchTask
     }
 
     func open(_ group: ConversationHits) {
