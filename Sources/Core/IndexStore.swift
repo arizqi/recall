@@ -530,13 +530,17 @@ final class IndexStore: @unchecked Sendable {
         let sources: [SourceStatus] = queue.sync {
             var statement: OpaquePointer?
             defer { sqlite3_finalize(statement) }
+            // Joined through file_path rather than files.source: a bus event declares
+            // its own source, so the file it arrived in may be filed under `inbox`
+            // while its chunks are badged `linear`.
             guard sqlite3_prepare_v2(db, """
             SELECT c.source,
-                   (SELECT COUNT(*) FROM files f WHERE f.source = c.source),
+                   COUNT(DISTINCT c.file_path),
                    COUNT(DISTINCT c.conversation_id),
                    COUNT(*),
-                   (SELECT MAX(indexed_at) FROM files f WHERE f.source = c.source)
-            FROM chunks c GROUP BY c.source ORDER BY c.source;
+                   MAX(f.indexed_at)
+            FROM chunks c LEFT JOIN files f ON f.path = c.file_path
+            GROUP BY c.source ORDER BY c.source;
             """, -1, &statement, nil) == SQLITE_OK else { return [] }
             var result: [SourceStatus] = []
             while sqlite3_step(statement) == SQLITE_ROW {

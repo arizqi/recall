@@ -155,9 +155,18 @@ struct RecallCLI {
                 + "\(source.files) files · \(source.conversations) conversations · \(source.chunks) chunks · \(stamp)")
         }
         for source in Paths.defaultSources() where !stats.sources.contains(where: { $0.source == source.id }) {
-            let present = FileManager.default.fileExists(atPath: source.root.path)
-            print("  \(source.displayName.padding(toLength: 14, withPad: " ", startingAt: 0)) "
-                + (present ? "not indexed yet" : "no directory at \(source.root.path)"))
+            let files = store.indexedFilePaths(source: source.id).count
+            let detail: String
+            if files > 0 {
+                // Bus files are filed under the source that found them, but their
+                // chunks carry whatever source each event declared.
+                detail = "\(files) file(s) indexed under declared sources"
+            } else {
+                detail = FileManager.default.fileExists(atPath: source.root.path)
+                    ? "no conversations yet"
+                    : "no directory at \(source.root.path)"
+            }
+            print("  \(source.displayName.padding(toLength: 14, withPad: " ", startingAt: 0)) \(detail)")
         }
     }
 

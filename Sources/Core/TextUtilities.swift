@@ -77,16 +77,19 @@ enum RecallText {
         return clipped(sentence, length: 82)
     }
 
-    /// Noise that Claude's own transports inject into transcripts. Indexing it
-    /// buries real answers under boilerplate.
+    private static let machineTurn = try? NSRegularExpression(pattern: #"^</?[A-Za-z][A-Za-z0-9_-]*>"#)
+
+    /// Noise the transports inject into transcripts: command echoes, system
+    /// reminders, task notifications. A turn that opens with an XML-style tag is
+    /// machine context, not something anyone said — and indexing it buries the real
+    /// conversation under boilerplate that matches every query.
     static func isNoise(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return true }
-        return trimmed.hasPrefix("<local-command-caveat>")
-            || trimmed.hasPrefix("<local-command-stdout>")
-            || trimmed.hasPrefix("<system-reminder>")
-            || trimmed.hasPrefix("<command-name>")
-            || trimmed.hasPrefix("Caveat: The messages below")
+        if trimmed.hasPrefix("Caveat: The messages below") { return true }
+        guard let machineTurn else { return false }
+        let head = String(trimmed.prefix(64))
+        return machineTurn.firstMatch(in: head, range: NSRange(head.startIndex..., in: head)) != nil
     }
 }
 
