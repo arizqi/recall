@@ -20,8 +20,8 @@ struct RoomSource: EventSource {
 
     func events(in file: URL) -> [RecallEvent] {
         let roomName = file.deletingPathExtension().lastPathComponent
-        let title = "Room — \(roomName)"
         var events: [RecallEvent] = []
+        var lastDate = ""
 
         JSONLReader.forEachLine(at: file) { data in
             guard let row = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -32,12 +32,20 @@ struct RoomSource: EventSource {
             guard kind != "tool_result" else { return true }
             let speaker = (row["name"] as? String) ?? (row["from"] as? String) ?? kind
             let body = "[\(speaker)] \(text.trimmingCharacters(in: .whitespacesAndNewlines))"
+            let room = (row["room"] as? String) ?? roomName
+            let timestamp = Timestamps.date(row["at"] ?? row["ts"] ?? row["timestamp"])
+
+            // A room is an append-only log that never ends, so treating the whole
+            // file as one conversation buries any single day's work in months of
+            // unrelated chatter. Days are the natural unit.
+            let day = timestamp.map { DateFormatter.day.string(from: $0) } ?? lastDate
+            lastDate = day
 
             events.append(RecallEvent(
                 source: id,
-                conversationId: "\(id):\((row["room"] as? String) ?? roomName)",
-                title: title,
-                ts: Timestamps.date(row["at"] ?? row["ts"] ?? row["timestamp"]) ?? .distantPast,
+                conversationId: day.isEmpty ? "\(id):\(room)" : "\(id):\(room)#\(day)",
+                title: day.isEmpty ? "Room — \(room)" : "Room — \(room) · \(day)",
+                ts: timestamp ?? .distantPast,
                 role: RecallEvent.Role(lenient: kind == "human" ? "user" : kind),
                 text: body,
                 artifactPaths: ArtifactScanner.paths(in: text)
@@ -45,7 +53,7 @@ struct RoomSource: EventSource {
             return true
         }
 
-        return Normalization.finish(events, fallbackTitle: title, file: file)
+        return Normalization.finish(events, fallbackTitle: "Room — \(roomName)", file: file)
     }
 }
 

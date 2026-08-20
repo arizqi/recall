@@ -49,6 +49,18 @@ final class RankingTests: XCTestCase {
         XCTAssertEqual(fused.map(\.id), [2, 9], "equal scores break by id, so repeat queries agree")
     }
 
+    func testConversationScoreCapsHowMuchOneLongThreadCanPileUp() {
+        let focused = SearchEngine.conversationScore([1.0, 0.9])
+        let sprawling = SearchEngine.conversationScore(Array(repeating: 0.3, count: 40))
+        XCTAssertGreaterThan(focused, sprawling, "40 passing mentions must not beat two real ones")
+        XCTAssertEqual(
+            SearchEngine.conversationScore(Array(repeating: 1.0, count: 40)),
+            SearchEngine.conversationScore(Array(repeating: 1.0, count: SearchEngine.scoredFragmentsPerConversation)),
+            accuracy: 1e-9,
+            "fragments past the cap contribute nothing"
+        )
+    }
+
     func testTokenizerQuotesEveryTermSoPunctuationIsSafe() {
         XCTAssertEqual(IndexStore.ftsTokens("Sources/Core/Chunker.swift"), ["\"sources\"", "\"core\"", "\"chunker\"", "\"swift\""])
         XCTAssertTrue(IndexStore.ftsTokens("   ").isEmpty)

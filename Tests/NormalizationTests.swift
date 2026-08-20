@@ -87,8 +87,25 @@ final class NormalizationTests: XCTestCase {
         XCTAssertEqual(events[0].role, .user)
         XCTAssertEqual(events[1].role, .assistant)
         XCTAssertTrue(events[0].text.hasPrefix("[Ashar] "))
-        XCTAssertEqual(events[0].conversationId, "room:company")
-        XCTAssertEqual(events[0].title, "Room — company")
+        let day = DateFormatter.day.string(from: events[0].ts)
+        XCTAssertEqual(events[0].conversationId, "room:company#\(day)")
+        XCTAssertEqual(events[0].title, "Room — company · \(day)")
+        XCTAssertEqual(events[0].conversationId, events[1].conversationId)
+    }
+
+    func testRoomLogIsSplitPerDay() throws {
+        let file = root.appendingPathComponent("company.jsonl")
+        try Data("""
+        {"room":"company","at":"2026-08-19T13:00:00Z","kind":"human","name":"Ashar","text":"day one question"}
+        {"room":"company","at":"2026-08-22T13:00:00Z","kind":"turn","name":"Builder","text":"day two answer"}
+
+        """.utf8).write(to: file)
+
+        // A room is an append-only log; without the split, one day's work is a needle
+        // in months of unrelated chatter and never ranks.
+        let events = RoomSource(root: root).events(in: file)
+        XCTAssertEqual(Set(events.map(\.conversationId)).count, 2)
+        XCTAssertNotEqual(events[0].conversationId, events[1].conversationId)
     }
 
     func testInboxRoundTripsTheDocumentedBusFormat() throws {

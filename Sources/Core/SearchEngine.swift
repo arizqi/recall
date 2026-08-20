@@ -51,6 +51,8 @@ struct SearchOptions: Sendable {
 /// a comparable scale, and RRF only needs the orderings.
 struct SearchEngine: Sendable {
     static let rrfK = 60.0
+    /// How many fragments of one conversation contribute to its score.
+    static let scoredFragmentsPerConversation = 5
 
     let store: IndexStore
     let embedder: any Embedder
@@ -105,6 +107,17 @@ struct SearchEngine: Sendable {
             }
     }
 
+    /// A conversation with several good fragments outranks one lucky fragment, but
+    /// with diminishing returns and a hard cap: uncapped, a months-long thread that
+    /// mentions the topic in passing forty times outscores the short conversation
+    /// that is actually about it.
+    static func conversationScore(_ fragmentScores: [Double]) -> Double {
+        fragmentScores
+            .prefix(scoredFragmentsPerConversation)
+            .enumerated()
+            .reduce(0) { $0 + $1.element / Double($1.offset + 1) }
+    }
+
     private func group(
         _ fused: [(id: Int64, score: Double, vectorRank: Int?, keywordRank: Int?)],
         options: SearchOptions
@@ -113,23 +126,17 @@ struct SearchEngine: Sendable {
         let hydrated = store.chunks(ids: fused.map(\.id))
         var byConversation: [String: [SearchHit]] = [:]
         var order: [String] = []
-        var totals: [String: Double] = [:]
 
         for entry in fused {
             guard let chunk = hydrated[entry.id] else { continue }
             if !options.sources.isEmpty, !options.sources.contains(chunk.source) { continue }
-            let hit = SearchHit(
+            if byConversation[chunk.conversationId] == nil { order.append(chunk.conversationId) }
+            byConversation[chunk.conversationId, default: []].append(SearchHit(
                 chunk: chunk,
                 score: entry.score,
                 vectorRank: entry.vectorRank,
                 keywordRank: entry.keywordRank
-            )
-            if byConversation[chunk.conversationId] == nil { order.append(chunk.conversationId) }
-            byConversation[chunk.conversationId, default: []].append(hit)
-            // A conversation with several good fragments outranks one lucky fragment,
-            // but with diminishing returns so one long thread cannot dominate.
-            let rank = byConversation[chunk.conversationId]!.count
-            totals[chunk.conversationId, default: 0] += entry.score / Double(rank)
+            ))
         }
 
         return order
@@ -140,7 +147,7 @@ struct SearchEngine: Sendable {
                     source: first.chunk.source,
                     title: first.chunk.title,
                     date: hits.map(\.chunk.endsAt).max() ?? first.chunk.endsAt,
-                    score: totals[id] ?? first.score,
+                    score: Self.conversationScore(hits.map(\.score)),
                     hits: hits
                 )
             }
