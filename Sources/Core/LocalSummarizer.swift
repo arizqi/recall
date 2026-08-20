@@ -140,8 +140,20 @@ struct LocalSummarizer: Sendable {
         return content
     }
 
+    /// Small models fill required arrays with "None mentioned." rather than leaving
+    /// them empty; that is a non-answer, and the section reads better absent.
+    private static let emptyPhrases: Set<String> = [
+        "none", "none.", "none mentioned", "none mentioned.", "n/a", "not applicable",
+        "no decisions", "no next steps", "no artifacts",
+    ]
+
     private func strings(_ value: Any?) -> [String] {
-        ((value as? [Any]) ?? []).compactMap { $0 as? String }.filter { !$0.isEmpty }
+        ((value as? [Any]) ?? [])
+            .compactMap { $0 as? String }
+            .filter { item in
+                let normalized = RecallText.normalized(item).lowercased()
+                return !normalized.isEmpty && !Self.emptyPhrases.contains(normalized)
+            }
     }
 
     /// Small models sometimes wrap JSON in prose or a code fence even under `format`.

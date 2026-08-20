@@ -23,7 +23,7 @@ SQLite file in Application Support, and nothing is ever uploaded.
 | --- | --- | --- |
 | Claude Code | `~/.claude/projects/*/*.jsonl` | Top-level sessions only; nested `subagents/` transcripts are skipped as duplicates. |
 | Cowork | `~/Library/Application Support/Claude/local-agent-mode-sessions/**/audit.jsonl` | Title comes from the sibling `local_*.json`. |
-| Rooms | `~/.company-os/hermes-home/company/rooms/*.jsonl` | Just a directory of JSONL. Recall never talks to Company OS and does not care whether it is installed or running. |
+| Rooms | `~/.company-os/hermes-home/company/rooms/*.jsonl` | Just a directory of JSONL. Recall never talks to Company OS and does not care whether it is installed or running. A room is an append-only log, so it is indexed one conversation per day. |
 | Inbox | `~/Library/Application Support/Recall/inbox/*.jsonl` | The bus: any tool can drop normalized events here. |
 | ChatGPT | account export `.zip` | Converted to normalized JSONL under `~/Library/Application Support/Recall/imports/`. Drag the zip onto the window, or `recall import-chatgpt export.zip`. |
 
@@ -77,13 +77,18 @@ chunk text so a retrieved fragment reads on its own.
 Indexing is resumable: each file commits in its own transaction and is only recorded
 once its chunks are in, so an interrupted run resumes exactly where it stopped.
 
+Throughput on an M-series Mac is ~22 chunks/second, embedding-bound: a first full
+index of 155 files took 4m47s, and a rescan that finds nothing changed takes 0.2s.
+Most of a Claude Code transcript never reaches the index — 134 MB of raw JSONL on
+this machine held 0.3 MB of actual conversation, the rest being tool results.
+
 ### sqlite-vec vs. brute force
 
-Recall does **not** use sqlite-vec. Measured on this machine's real corpus — 154
-conversations, 6.9k chunks, 768 dimensions — a full brute-force cosine scan with
+Recall does **not** use sqlite-vec. Measured on a real corpus — 157 conversations,
+6.2k chunks, 768 dimensions, a 98 MB index — a full brute-force cosine scan with
 Accelerate's `vDSP_dotpr` is a few milliseconds; end-to-end search including the
-query embedding round-trip to Ollama is ~50-60 ms, and the embedding call dominates.
-At 20 MB of vectors per 6.9k chunks, even a 100× larger corpus is a sub-100 ms scan.
+query's embedding round-trip to Ollama is 55-70 ms, and the embedding call dominates.
+At 18 MB of vectors per 6.2k chunks, even a 100× larger corpus is a sub-second scan.
 
 An ANN index would buy nothing here and would cost a vendored native extension, a
 code-signing story for it, and a second failure mode. The embeddings are stored as
@@ -94,9 +99,10 @@ of the query path only.
 
 Vector and keyword results are fused with reciprocal rank fusion (k = 60, vector
 weight 1.0, keyword 0.8) rather than by mixing raw scores — cosine similarity and
-bm25 are not on a comparable scale, and RRF only needs the orderings. Conversations
-rank by their fragments with diminishing returns, so one long thread cannot crowd
-out everything else.
+bm25 are not on a comparable scale, and RRF only needs the orderings. A conversation
+scores from its best five fragments with diminishing returns, so several good hits
+beat one lucky hit while a sprawling thread that mentions the topic forty times in
+passing cannot crowd out the short conversation that is actually about it.
 
 If Ollama is not running, search degrades to keyword-only instead of returning
 nothing, and says so in the footer.
