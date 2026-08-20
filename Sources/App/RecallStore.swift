@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import UniformTypeIdentifiers
 
 @MainActor
 final class RecallStore: ObservableObject {
@@ -27,6 +28,10 @@ final class RecallStore: ObservableObject {
     @Published private(set) var rows: [TranscriptRow] = []
     @Published var expandedRowIDs = Set<Int>()
     @Published private(set) var isExporting = false
+    @Published private(set) var isImporting = false
+    /// True while a file is hovering over the window, so the drop target is visible
+    /// before the user commits to letting go.
+    @Published var isDropTargeted = false
     @Published private(set) var summaries: [String: ConversationSummary] = [:]
     @Published private(set) var summarizingIDs = Set<String>()
     @Published private(set) var status: String?
@@ -93,7 +98,7 @@ final class RecallStore: ObservableObject {
         }
     }
 
-    func index(force: Bool = false) {
+    func index(force: Bool = false, only: [any EventSource]? = nil) {
         guard let store, !isIndexing else { return }
         isIndexing = true
         indexReport = nil
@@ -106,6 +111,7 @@ final class RecallStore: ObservableObject {
             }
             let indexer = Indexer(store: store, embedder: embedder)
             let report = await indexer.run(
+                sources: only ?? Paths.defaultSources(),
                 options: IndexOptions(force: force),
                 progress: { [weak self] progress in
                     Task { @MainActor in
@@ -131,15 +137,68 @@ final class RecallStore: ObservableObject {
         indexProgress = nil
     }
 
-    /// Drag in either vendor's account export; the format is detected from the file.
-    func importExport(at url: URL) {
-        do {
-            let result = try ExportImporter().importArchive(at: url)
-            note("Imported \(result.conversations) \(RecallSource.label(result.kind.source)) conversations — indexing…")
-            index()
-        } catch {
-            failure = error.localizedDescription
+    /// Drag in either vendor's account export, or pick it from the panel; the format
+    /// is detected from the file, not from what the user said it was.
+    @discardableResult
+    func importExport(at url: URL) -> Task<Void, Never>? {
+        guard !isImporting else { return nil }
+        isImporting = true
+        failure = nil
+        note("Reading \(url.lastPathComponent)…")
+        return Task.detached(priority: .userInitiated) {
+            do {
+                let result = try ExportImporter().importArchive(at: url)
+                await MainActor.run {
+                    self.isImporting = false
+                    self.note("\(result.conversations.formatted()) \(RecallSource.label(result.kind.source)) "
+                        + "conversations imported — indexing…")
+                    // Only the imports directory needs a pass; the other sources have
+                    // not changed and a full scan would make a fast action feel slow.
+                    self.index(only: [NormalizedJSONLSource(id: RecallSource.imports, root: Paths.imports)])
+                }
+            } catch {
+                await MainActor.run {
+                    self.isImporting = false
+                    self.failure = error.localizedDescription
+                }
+            }
         }
+    }
+
+    /// Opens the file picker. Zips and a bare `conversations.json` are both accepted
+    /// because people unzip exports before they think to import them.
+    func chooseExport() {
+        let panel = NSOpenPanel()
+        panel.title = "Import a ChatGPT or claude.ai export"
+        panel.prompt = "Import"
+        panel.allowedContentTypes = [.zip, .json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        importExport(at: url)
+    }
+
+    /// Accepts a dropped file. `loadObject(ofClass: URL.self)` silently fails for
+    /// Finder drags on macOS; the file-URL type identifier is the reliable path.
+    func acceptDrop(_ providers: [NSItemProvider]) -> Bool {
+        guard let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) })
+        else { return false }
+        _ = provider.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, _ in
+            guard let data, let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
+            Task { @MainActor in self.receive(url) }
+        }
+        return true
+    }
+
+    /// Handles one dropped or picked file. Split out from the drop plumbing so the
+    /// decision — is this an export? — is testable without an NSItemProvider.
+    @discardableResult
+    func receive(_ url: URL) -> Task<Void, Never>? {
+        guard ["zip", "json"].contains(url.pathExtension.lowercased()) else {
+            failure = "\(url.lastPathComponent) is not an export zip or conversations.json."
+            return nil
+        }
+        return importExport(at: url)
     }
 
     // MARK: - Search

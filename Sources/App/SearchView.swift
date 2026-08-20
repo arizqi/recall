@@ -31,7 +31,35 @@ struct SearchView: View {
         .frame(width: 700, height: 720)
         .background(background)
         .tint(accent)
-        .onDrop(of: [.fileURL], isTargeted: nil, perform: handleDrop)
+        // The whole window is the drop target: a small hidden one may as well not
+        // exist in a menu-bar app you can only see for a moment.
+        .onDrop(of: [.fileURL], isTargeted: dropBinding) { providers in
+            store.acceptDrop(providers)
+        }
+        .overlay { if store.isDropTargeted { dropOverlay } }
+    }
+
+    private var dropBinding: Binding<Bool> {
+        Binding(get: { store.isDropTargeted }, set: { store.isDropTargeted = $0 })
+    }
+
+    private var dropOverlay: some View {
+        ZStack {
+            Color(nsColor: .windowBackgroundColor).opacity(0.92)
+            VStack(spacing: 12) {
+                Image(systemName: "arrow.down.doc.fill")
+                    .font(.system(size: 42, weight: .light))
+                    .foregroundStyle(accent)
+                Text("Drop claude.ai / ChatGPT export here")
+                    .font(.title3.weight(.semibold))
+                Text("A .zip account export, or a bare conversations.json")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(accent, style: StrokeStyle(lineWidth: 3, dash: [9, 6]))
+                .padding(10)
+        }
+        .ignoresSafeArea()
     }
 
     private var background: some View {
@@ -64,6 +92,16 @@ struct SearchView: View {
                     Text(indexCaption).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
+                Button { store.chooseExport() } label: {
+                    if store.isImporting {
+                        Label("Importing…", systemImage: "hourglass")
+                    } else {
+                        Label("Import export ZIP…", systemImage: "arrow.down.doc")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(store.isImporting)
+                .help("Import a ChatGPT or claude.ai account export")
                 if store.isIndexing {
                     Button("Stop") { store.cancelIndexing() }
                         .buttonStyle(.bordered)
@@ -272,7 +310,11 @@ struct SearchView: View {
                 Text("Not on this Mac: " + store.missingSources.joined(separator: ", "))
                     .font(.caption2).foregroundStyle(.tertiary)
             }
-            Text("Drop a ChatGPT or claude.ai export .zip here to import it.")
+            Button { store.chooseExport() } label: {
+                Label("Import export ZIP…", systemImage: "arrow.down.doc")
+            }
+            .buttonStyle(.borderedProminent)
+            Text("…or drop a ChatGPT / claude.ai export anywhere in this window.")
                 .font(.caption2).foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity)
@@ -426,6 +468,11 @@ struct SearchView: View {
                 Text("Local index · no cloud calls").font(.caption2).foregroundStyle(.secondary)
             }
             Spacer()
+            Button { store.chooseExport() } label: {
+                Label("Import…", systemImage: "arrow.down.doc")
+            }
+            .buttonStyle(.bordered)
+            .disabled(store.isImporting)
             Button { store.copySelection() } label: {
                 if store.isExporting {
                     HStack(spacing: 6) {
@@ -454,12 +501,4 @@ struct SearchView: View {
             .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.12)))
     }
 
-    private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
-        guard let provider = providers.first else { return false }
-        _ = provider.loadObject(ofClass: URL.self) { url, _ in
-            guard let url, ["zip", "json"].contains(url.pathExtension.lowercased()) else { return }
-            Task { @MainActor in store.importExport(at: url) }
-        }
-        return true
-    }
 }
