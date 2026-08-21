@@ -92,7 +92,7 @@ struct SearchView: View {
                     Text(indexCaption).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button { store.chooseExport() } label: {
+                Button { store.openImportWindow() } label: {
                     if store.isImporting {
                         Label("Importing…", systemImage: "hourglass")
                     } else {
@@ -310,7 +310,7 @@ struct SearchView: View {
                 Text("Not on this Mac: " + store.missingSources.joined(separator: ", "))
                     .font(.caption2).foregroundStyle(.tertiary)
             }
-            Button { store.chooseExport() } label: {
+            Button { store.openImportWindow() } label: {
                 Label("Import export ZIP…", systemImage: "arrow.down.doc")
             }
             .buttonStyle(.borderedProminent)
@@ -468,7 +468,7 @@ struct SearchView: View {
                 Text("Local index · no cloud calls").font(.caption2).foregroundStyle(.secondary)
             }
             Spacer()
-            Button { store.chooseExport() } label: {
+            Button { store.openImportWindow() } label: {
                 Label("Import…", systemImage: "arrow.down.doc")
             }
             .buttonStyle(.bordered)

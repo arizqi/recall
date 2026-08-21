@@ -183,6 +183,10 @@ final class RecallStore: ObservableObject {
     /// indistinguishable from one that never ran.
     private func announceImport(_ result: ExportImporter.Result) {
         guard showsDialogs else { return }
+        // The Import window shows the same summary inline; don't also stack a modal
+        // on top of it. The modal is for imports triggered by a drop on the main
+        // popover, where there is no window to show the result.
+        if NSApp.windows.contains(where: { $0.title == "Import export" && $0.isVisible }) { return }
         let alert = NSAlert()
         alert.alertStyle = .informational
         alert.messageText = result.headline
@@ -196,6 +200,7 @@ final class RecallStore: ObservableObject {
 
     private func reportImportFailure(url: URL, error: Error) {
         guard showsDialogs else { return }
+        if NSApp.windows.contains(where: { $0.title == "Import export" && $0.isVisible }) { return }
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "Nothing was imported from \(url.lastPathComponent)"
@@ -204,17 +209,24 @@ final class RecallStore: ObservableObject {
         alert.runModal()
     }
 
-    /// Opens the file picker. Zips and a bare `conversations.json` are both accepted
+    /// Entry point from the menu-bar popover. Opens the standalone Import window
+    /// rather than presenting a panel inside the popover — a popover dismisses on
+    /// focus loss, and opening an NSOpenPanel from inside it tore the popover (and
+    /// the panel's presenting context) down, so the picker was lost.
+    func openImportWindow() {
+        failure = nil
+        lastImport = nil
+        ImportWindowController.shared.present(store: self)
+    }
+
+    /// Presents the open panel as a sheet on the given window, which cannot slip
+    /// behind its host. Zips and a bare `conversations.json` are both accepted
     /// because people unzip exports before they think to import them.
-    func chooseExport() {
-        let panel = NSOpenPanel()
-        panel.title = "Import a ChatGPT or claude.ai export"
-        panel.prompt = "Import"
-        panel.allowedContentTypes = [.zip, .json]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        importExport(at: url)
+    func chooseExportSheet(on window: NSWindow?) {
+        ImportPanel.presentSheet(on: window) { [weak self] url in
+            guard let self, let url else { return }
+            self.receive(url)
+        }
     }
 
     /// Accepts a dropped file. `loadObject(ofClass: URL.self)` silently fails for

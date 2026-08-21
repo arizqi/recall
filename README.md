@@ -202,6 +202,15 @@ xcodebuild -project Recall.xcodeproj -scheme Recall \
 Recall is a menu-bar app (`LSUIElement`): it has no Dock icon. Click the clock icon
 in the menu bar, or launch it at login via System Settings → General → Login Items.
 
+## Importing from a menu-bar app
+
+Recall's main UI is a menu-bar popover, which macOS dismisses the moment focus
+leaves it. Opening a file picker straight from the popover therefore tore the
+popover down and lost the picker behind everything. So **Import opens its own real
+window** ("Import export") with a drop zone and a Choose file… button; the open
+panel is presented as a sheet on that window, which cannot slip behind its host.
+Drag-and-drop onto the main window still works too.
+
 ## Privacy
 
 - Source files are read, never written.
