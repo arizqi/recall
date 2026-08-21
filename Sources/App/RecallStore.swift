@@ -29,6 +29,9 @@ final class RecallStore: ObservableObject {
     @Published var expandedRowIDs = Set<Int>()
     @Published private(set) var isExporting = false
     @Published private(set) var isImporting = false
+    @Published private(set) var lastImport: ExportImporter.Result?
+    /// Tests drive the same code path without a modal blocking the run loop.
+    var showsDialogs = true
     /// True while a file is hovering over the window, so the drop target is visible
     /// before the user commits to letting go.
     @Published var isDropTargeted = false
@@ -39,14 +42,21 @@ final class RecallStore: ObservableObject {
 
     private var store: IndexStore?
     private let embedder: any Embedder
+    /// Injectable so tests never write into the real imports directory.
+    private let importsDirectory: URL
     private var searchTask: Task<Void, Never>?
     private var indexTask: Task<Void, Never>?
     private var statusResetTask: Task<Void, Never>?
 
     /// The index location and embedder are injectable so tests can drive the real
     /// view against a temporary index without a model.
-    init(indexURL: URL = Paths.indexDatabase, embedder: any Embedder = OllamaEmbedder()) {
+    init(
+        indexURL: URL = Paths.indexDatabase,
+        embedder: any Embedder = OllamaEmbedder(),
+        importsDirectory: URL = Paths.imports
+    ) {
         self.embedder = embedder
+        self.importsDirectory = importsDirectory
         Paths.ensureDirectories()
         do {
             store = try IndexStore(url: indexURL)
@@ -145,24 +155,53 @@ final class RecallStore: ObservableObject {
         isImporting = true
         failure = nil
         note("Reading \(url.lastPathComponent)…")
+        let destination = importsDirectory
         return Task.detached(priority: .userInitiated) {
             do {
-                let result = try ExportImporter().importArchive(at: url)
+                let result = try ExportImporter(destination: destination).importArchive(at: url)
                 await MainActor.run {
                     self.isImporting = false
-                    self.note("\(result.conversations.formatted()) \(RecallSource.label(result.kind.source)) "
-                        + "conversations imported — indexing…")
+                    self.lastImport = result
+                    self.note("\(result.headline) — indexing…")
+                    self.announceImport(result)
                     // Only the imports directory needs a pass; the other sources have
                     // not changed and a full scan would make a fast action feel slow.
-                    self.index(only: [NormalizedJSONLSource(id: RecallSource.imports, root: Paths.imports)])
+                    self.index(only: [NormalizedJSONLSource(id: RecallSource.imports, root: destination)])
                 }
             } catch {
                 await MainActor.run {
                     self.isImporting = false
                     self.failure = error.localizedDescription
+                    self.reportImportFailure(url: url, error: error)
                 }
             }
         }
+    }
+
+    /// An import that produced nothing used to leave an empty file and a silent UI.
+    /// Both outcomes are now modal, because an import you cannot see the result of is
+    /// indistinguishable from one that never ran.
+    private func announceImport(_ result: ExportImporter.Result) {
+        guard showsDialogs else { return }
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = result.headline
+        alert.informativeText = result.detail
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Show imported")
+        if alert.runModal() == .alertSecondButtonReturn {
+            NSWorkspace.shared.activateFileViewerSelecting([result.file])
+        }
+    }
+
+    private func reportImportFailure(url: URL, error: Error) {
+        guard showsDialogs else { return }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Nothing was imported from \(url.lastPathComponent)"
+        alert.informativeText = error.localizedDescription
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     /// Opens the file picker. Zips and a bare `conversations.json` are both accepted

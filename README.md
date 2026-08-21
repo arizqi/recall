@@ -26,7 +26,7 @@ SQLite file in Application Support, and nothing is ever uploaded.
 | Rooms | `~/.company-os/hermes-home/company/rooms/*.jsonl` | Just a directory of JSONL. Recall never talks to Company OS and does not care whether it is installed or running. A room is an append-only log, so it is indexed one conversation per day. |
 | Inbox | `~/Library/Application Support/Recall/inbox/*.jsonl` | The bus: any tool can drop normalized events here. |
 | ChatGPT | account export `.zip` | Converted to normalized JSONL under `~/Library/Application Support/Recall/imports/`. Drag the zip onto the window, or `recall import export.zip`. |
-| claude.ai | account export `.zip` | Same path. This is where Cowork and web chats live now. |
+| claude.ai | account export `.zip` | Same path. This is where Cowork and web chats live now. Batched exports (`…batch-0000.zip`) also carry `design_chats/` and `projects/`, all of which are read; `memories.json`, `users.json` and `login_history.json` are deliberately not indexed. Re-importing a batch is safe — conversations already imported are skipped by uuid. |
 
 Every reader is isolated and covered by a fixture test. These are private storage
 formats that change without notice; when one does, the failing fixture tells you
@@ -48,6 +48,11 @@ to this Mac. Verified on 2026-08-20:
   caches, and the `claude.ai` IndexedDB `keyval-store` holds composer drafts, not
   transcripts;
 - no other recent `.jsonl` exists anywhere under `~` outside the known sources.
+
+A claude.ai export commonly contains conversations with no message body at all —
+titles and timestamps only. Those are skipped and counted, and the count is reported
+after the import, so "32 conversations in, 16 indexed" is an answer rather than a
+mystery. An import that yields nothing raises an error and writes no file.
 
 Recall detects this rather than asserting it: when the Cowork directory keeps being
 written but the newest indexed transcript is more than three days older, the UI shows

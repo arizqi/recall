@@ -14,9 +14,18 @@ final class ImportEntryPointTests: XCTestCase {
                         "text":"imported by drop","content":[],"files":[],"attachments":[]}]}]
     """
 
+    /// Imports go to a temporary directory and dialogs are off: a test must never
+    /// write into the real imports directory, which is exactly how nine fixture
+    /// files once ended up in a real index.
     @MainActor
     private func makeStore(root: URL) -> RecallStore {
-        RecallStore(indexURL: root.appendingPathComponent("index.db"), embedder: HashingEmbedder(dimensions: 64))
+        let store = RecallStore(
+            indexURL: root.appendingPathComponent("index.db"),
+            embedder: HashingEmbedder(dimensions: 64),
+            importsDirectory: root.appendingPathComponent("imports")
+        )
+        store.showsDialogs = false
+        return store
     }
 
     @MainActor
@@ -41,6 +50,12 @@ final class ImportEntryPointTests: XCTestCase {
         XCTAssertTrue(store.status?.contains("conversations.json") == true)
         XCTAssertNil(store.failure)
         await task?.value
+        XCTAssertEqual(store.lastImport?.conversations, 1)
+        XCTAssertEqual(store.lastImport?.file.deletingLastPathComponent().lastPathComponent, "imports")
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: root.appendingPathComponent("imports").path),
+            "the import landed in the injected directory, not the real one"
+        )
     }
 
     @MainActor
