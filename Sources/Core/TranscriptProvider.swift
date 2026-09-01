@@ -55,7 +55,12 @@ struct TranscriptProvider: Sendable {
     }
 
     private func source(for record: ConversationRecord, url: URL) -> any EventSource {
-        if let match = sources.first(where: { $0.id == record.source }) { return match }
+        // Matched on id *and* location: a ChatGPT conversation is either a desktop
+        // rollout under `~/.codex/sessions` or normalized bus JSONL from an account
+        // export, and the two share a source id but not a reader.
+        if let match = sources.first(where: { $0.id == record.source && url.path.hasPrefix($0.root.path) }) {
+            return match
+        }
         // An inbox event can declare any source string it likes; its file is still
         // normalized JSONL, so read it with the bus reader.
         return NormalizedJSONLSource(id: record.source, root: url.deletingLastPathComponent())

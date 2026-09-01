@@ -17,6 +17,7 @@
 		2739EC9013877E97C0C09706 /* RecallCLI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D05CDD64E34F76F40035A0F /* RecallCLI.swift */; };
 		3FFF04C7C648D52C686667F1 /* ClaudeCodeSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96490880E64163CEE80243B4 /* ClaudeCodeSource.swift */; };
 		418C38F70B1EC68B2D0B0322 /* TranscriptRowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD279841C6D69DEBDFF9C20B /* TranscriptRowTests.swift */; };
+		48FE634F71218402B4BAF648 /* ChatGPTDesktopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7F3DDB39E3F5EFA08A780F9 /* ChatGPTDesktopTests.swift */; };
 		4ABE90BA317302BB1322E291 /* ExportFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44854F7B6F44488CB827EE35 /* ExportFormatter.swift */; };
 		585D3E3005B048B8B4A21988 /* TranscriptRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C792FF0EADD55230D12AEE58 /* TranscriptRow.swift */; };
 		59AEBD5F63921F2FBB4290BD /* Paths.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D7216DA64F19CE4F8476A99 /* Paths.swift */; };
@@ -46,6 +47,7 @@
 		A4CB204C3362B2B3C82F97B2 /* ExportImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9560A9E0A0606A0B0E4AB5E7 /* ExportImporter.swift */; };
 		A5B26B374530291E1D23EA26 /* ExportImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9560A9E0A0606A0B0E4AB5E7 /* ExportImporter.swift */; };
 		A70C5B3AFD14650347FA14EF /* Embedder.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1CAA7FC9A3F3EDC9463F8E3 /* Embedder.swift */; };
+		A7ABE2025D1E5D47B966A787 /* ChatGPTDesktopSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49D17A6EAF27B5F4FCF247A6 /* ChatGPTDesktopSource.swift */; };
 		AA3478638CE8EE80C709252B /* SearchEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 386BC52DACE1E524C163517B /* SearchEngine.swift */; };
 		AABBDA7F607D44C4817AE279 /* TextUtilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = C774606FF3BE172AA5839416 /* TextUtilities.swift */; };
 		B3B2559F94D990B320ECFDFE /* ManifestImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B683205FD143C8DF3ED6C8E /* ManifestImporter.swift */; };
@@ -60,6 +62,7 @@
 		CE1EA1B9D00B03E7412FE80F /* CategoryExportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F88D7A5AEFFA34BEB13B94E7 /* CategoryExportTests.swift */; };
 		D00BFBFFC7CC67D4A7AA0BA7 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 239B8D7BEDD5B14E475E9D90 /* SearchView.swift */; };
 		D3244DFA3C21DB1C0CC50018 /* TextUtilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = C774606FF3BE172AA5839416 /* TextUtilities.swift */; };
+		D3856745279A8E90CCEC1069 /* ChatGPTDesktopSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49D17A6EAF27B5F4FCF247A6 /* ChatGPTDesktopSource.swift */; };
 		DB5FA749A6620CCF1857F1AC /* ExportManifest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30E1258AD9D8EDA0A98134FD /* ExportManifest.swift */; };
 		E850CFA004C21CDF444F2332 /* RecallEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8075A85D294B28ECFDEA8E3 /* RecallEvent.swift */; };
 		E96CA42D271C6EB5A57A0FF7 /* TranscriptProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BF187705F44E5B23DE4BF0D /* TranscriptProvider.swift */; };
@@ -93,6 +96,7 @@
 		386BC52DACE1E524C163517B /* SearchEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchEngine.swift; sourceTree = "<group>"; };
 		3D615D99164146464E8CA44F /* Chunker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Chunker.swift; sourceTree = "<group>"; };
 		44854F7B6F44488CB827EE35 /* ExportFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportFormatter.swift; sourceTree = "<group>"; };
+		49D17A6EAF27B5F4FCF247A6 /* ChatGPTDesktopSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTDesktopSource.swift; sourceTree = "<group>"; };
 		4D05CDD64E34F76F40035A0F /* RecallCLI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecallCLI.swift; sourceTree = "<group>"; };
 		589D612419DE8AD691D1CD7C /* Recall.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Recall.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		737CAE23ECA86D2FB0AFEBF8 /* SourceCoverage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceCoverage.swift; sourceTree = "<group>"; };
@@ -114,6 +118,7 @@
 		A84A8D53294A688E06902991 /* RecallStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecallStore.swift; sourceTree = "<group>"; };
 		AD279841C6D69DEBDFF9C20B /* TranscriptRowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptRowTests.swift; sourceTree = "<group>"; };
 		B0E4880EEE8C09064DAA6F71 /* Indexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Indexer.swift; sourceTree = "<group>"; };
+		B7F3DDB39E3F5EFA08A780F9 /* ChatGPTDesktopTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTDesktopTests.swift; sourceTree = "<group>"; };
 		B908E00E38896E265F9F940D /* ChunkerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChunkerTests.swift; sourceTree = "<group>"; };
 		C774606FF3BE172AA5839416 /* TextUtilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextUtilities.swift; sourceTree = "<group>"; };
 		C792FF0EADD55230D12AEE58 /* TranscriptRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptRow.swift; sourceTree = "<group>"; };
@@ -133,6 +138,7 @@
 		723C9797D7478732630D6E2F /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				49D17A6EAF27B5F4FCF247A6 /* ChatGPTDesktopSource.swift */,
 				3D615D99164146464E8CA44F /* Chunker.swift */,
 				96490880E64163CEE80243B4 /* ClaudeCodeSource.swift */,
 				D939080BBC21270E07C14C51 /* CoworkSource.swift */,
@@ -198,6 +204,7 @@
 			children = (
 				38145DCB5023513656F2D0A3 /* BatchedExportTests.swift */,
 				F88D7A5AEFFA34BEB13B94E7 /* CategoryExportTests.swift */,
+				B7F3DDB39E3F5EFA08A780F9 /* ChatGPTDesktopTests.swift */,
 				B908E00E38896E265F9F940D /* ChunkerTests.swift */,
 				DD69D6C67EA21F45AC965DDB /* DateAndSortTests.swift */,
 				C887C72FB2DBC0B4A1F768FE /* ExportImportTests.swift */,
@@ -324,6 +331,7 @@
 			files = (
 				69BF240B3CE257B005B7CC6D /* BatchedExportTests.swift in Sources */,
 				CE1EA1B9D00B03E7412FE80F /* CategoryExportTests.swift in Sources */,
+				48FE634F71218402B4BAF648 /* ChatGPTDesktopTests.swift in Sources */,
 				F9E605D007168DE532BB893E /* ChunkerTests.swift in Sources */,
 				EA626B3C60541CBEED9A96A3 /* DateAndSortTests.swift in Sources */,
 				61F7B542EC760D1CD0E82FA3 /* ExportImportTests.swift in Sources */,
@@ -342,6 +350,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D3856745279A8E90CCEC1069 /* ChatGPTDesktopSource.swift in Sources */,
 				86A4811905545AE5281950FB /* Chunker.swift in Sources */,
 				A3D5F03D263A67D7E8AA1D02 /* ClaudeCodeSource.swift in Sources */,
 				745A89C015485AE9BDA6CFE7 /* CoworkSource.swift in Sources */,
@@ -371,6 +380,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A7ABE2025D1E5D47B966A787 /* ChatGPTDesktopSource.swift in Sources */,
 				6B534879332C4F1ED4C5E32B /* Chunker.swift in Sources */,
 				3FFF04C7C648D52C686667F1 /* ClaudeCodeSource.swift in Sources */,
 				679906D76C7AA864E15290F4 /* CoworkSource.swift in Sources */,

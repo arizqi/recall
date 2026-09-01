@@ -28,6 +28,11 @@ enum Paths {
         home.appendingPathComponent(".company-os/hermes-home/company/rooms")
     }
 
+    /// The ChatGPT desktop app (code-signed `com.openai.codex`) keeps its session
+    /// transcripts here. The root is `sessions`, not `.codex`: `~/.codex/auth.json`
+    /// holds credentials and is deliberately out of reach of every reader.
+    static var chatgptSessions: URL { home.appendingPathComponent(".codex/sessions") }
+
     static func ensureDirectories() {
         for url in [applicationSupport, inbox, imports] {
             try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
@@ -39,6 +44,7 @@ enum Paths {
     static func defaultSources() -> [any EventSource] {
         [
             ClaudeCodeSource(),
+            ChatGPTDesktopSource(),
             CoworkSource(),
             RoomSource(),
             NormalizedJSONLSource(id: RecallSource.inbox, root: inbox),

@@ -25,16 +25,17 @@ artifactPaths[]}` dropped into `~/Library/Application Support/Recall/inbox/`.
 | Source | Path | Note |
 |---|---|---|
 | Claude Code | `~/.claude/projects/*/*.jsonl` | top-level sessions only |
+| ChatGPT desktop | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` | the app is `com.openai.codex`; subagent threads, injected preamble and `[external_agent_tool_*]` plumbing dropped; `auth.json` never opened |
 | Cowork | `~/Library/Application Support/Claude/local-agent-mode-sessions/**/audit.jsonl` | **sessions after ~2026-08-14 are CLOUD-ONLY** — no transcript bytes land on disk (evidence in README); import the claude.ai export ZIP instead |
 | Company OS rooms | `~/.company-os/hermes-home/company/rooms/*.jsonl` | works without Company OS running |
 | Drop-in inbox | `~/Library/Application Support/Recall/inbox/` | the bus entry point |
 | claude.ai export ZIP | file picker / drag-drop / `recall import` | auto-detected; parses conversations + `design_chats/` + `projects/`; ~3 convos in Ashar's export legitimately have no body |
 | ChatGPT export ZIP | same importer | auto-detected by JSON shape |
 
-Related, separate repo: `claude-history-copier` branch
-`feature/chatgpt-and-artifacts` — found ChatGPT desktop is actually
-`com.openai.codex`; its real transcripts live in
-`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` (readable directly).
+The ChatGPT desktop reader was ported from `claude-history-copier` branch
+`feature/chatgpt-and-artifacts` (`Sources/ChatGPTReader.swift`), which is where
+the format was first worked out. The artifact half of that branch stays
+cancelled — see the gaps below.
 
 ## Architecture decisions (deliberate, revisit-able)
 

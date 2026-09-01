@@ -8,8 +8,8 @@ SQLite file in Application Support, and nothing is ever uploaded.
 
 ## What it does
 
-- Indexes Claude Code, Cowork, agent rooms, a drop-in inbox, and ChatGPT exports
-  into one searchable corpus.
+- Indexes Claude Code, the ChatGPT desktop app, Cowork, agent rooms, a drop-in
+  inbox, and account exports into one searchable corpus.
 - Hybrid search: vector similarity (nomic-embed-text) fused with FTS5 keyword
   search, grouped by conversation with a source badge and date.
 - Full transcript view with artifact paths, existence-checked, revealable in Finder.
@@ -25,7 +25,8 @@ SQLite file in Application Support, and nothing is ever uploaded.
 | Cowork | `~/Library/Application Support/Claude/local-agent-mode-sessions/**/audit.jsonl` | Title comes from the sibling `local_*.json`. Local transcripts stop after 2026-08-14 — see below. |
 | Rooms | `~/.company-os/hermes-home/company/rooms/*.jsonl` | Just a directory of JSONL. Recall never talks to Company OS and does not care whether it is installed or running. A room is an append-only log, so it is indexed one conversation per day. |
 | Inbox | `~/Library/Application Support/Recall/inbox/*.jsonl` | The bus: any tool can drop normalized events here. |
-| ChatGPT | account export `.zip` | Converted to normalized JSONL under `~/Library/Application Support/Recall/imports/`. Drag the zip onto the window, or `recall import export.zip`. |
+| ChatGPT desktop | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` | The ChatGPT macOS app is code-signed `com.openai.codex` and writes its full transcripts here, so they are indexed automatically like Claude Code — no export needed. Delegated (subagent) threads are skipped as duplicates of their parent, a forked thread keeps its own identity even though it replays its parent's `session_meta`, and the app's injected preamble (plugin catalogue, skill manifest, environment block, file digest) plus its `[external_agent_tool_call/result]` plumbing is dropped. Only `sessions/` is read: `~/.codex/auth.json` holds credentials and is outside the source root. |
+| ChatGPT | account export `.zip` | Converted to normalized JSONL under `~/Library/Application Support/Recall/imports/`. Drag the zip onto the window, or `recall import export.zip`. A conversation already imported this way is skipped by the desktop reader, so the two never double-index. |
 | claude.ai | account export `.zip` (one per category) | Same path. This is where Cowork and web chats live now. Since 2026-08 the export arrives as one zip per category — `conversations-000.zip`, `design_chats-000.zip`, `projects-000.zip`, `memories-000.zip`, `light_metadata-000.zip` — and a big account splits each category into numbered parts. Drop them all at once, or drop the folder; they are merged into one import and a conversation seen in two parts lands once (newest `updated_at` wins). Older single-zip exports (`…batch-0000.zip`) still work. Detection is by what is inside the archive, not by its name. `memories/` is indexed; `light_metadata` (users, login history) is recognized and skipped without an error. Re-importing is safe — conversations already imported are skipped by uuid. |
 | claude.ai download manifest | `manifest-….json` | The small JSON the export page hands over, pointing at one **single-use** download URL per category. Drop it on the Import window and Recall shows what it would fetch; nothing is opened until you say yes. On yes it opens each link in your **default browser** — the browser holds the claude.ai session, Recall never touches a cookie or a credential — strictly one at a time, waits for each zip to finish landing in `~/Downloads`, imports it, then moves to the next. The server takes 60–120s to build each zip, so waits are long by design; opening links in parallel cancels the download in flight and burns the link for good. A link that times out is reported, never retried. The zips stay in `~/Downloads`. `recall import manifest-….json` lists the files; add `--download` to run the same flow from the terminal. |
 
