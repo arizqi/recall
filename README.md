@@ -26,7 +26,8 @@ SQLite file in Application Support, and nothing is ever uploaded.
 | Rooms | `~/.company-os/hermes-home/company/rooms/*.jsonl` | Just a directory of JSONL. Recall never talks to Company OS and does not care whether it is installed or running. A room is an append-only log, so it is indexed one conversation per day. |
 | Inbox | `~/Library/Application Support/Recall/inbox/*.jsonl` | The bus: any tool can drop normalized events here. |
 | ChatGPT | account export `.zip` | Converted to normalized JSONL under `~/Library/Application Support/Recall/imports/`. Drag the zip onto the window, or `recall import export.zip`. |
-| claude.ai | account export `.zip` | Same path. This is where Cowork and web chats live now. Batched exports (`…batch-0000.zip`) also carry `design_chats/` and `projects/`, all of which are read; `memories.json`, `users.json` and `login_history.json` are deliberately not indexed. Re-importing a batch is safe — conversations already imported are skipped by uuid. |
+| claude.ai | account export `.zip` (one per category) | Same path. This is where Cowork and web chats live now. Since 2026-08 the export arrives as one zip per category — `conversations-000.zip`, `design_chats-000.zip`, `projects-000.zip`, `memories-000.zip`, `light_metadata-000.zip` — and a big account splits each category into numbered parts. Drop them all at once, or drop the folder; they are merged into one import and a conversation seen in two parts lands once (newest `updated_at` wins). Older single-zip exports (`…batch-0000.zip`) still work. Detection is by what is inside the archive, not by its name. `memories/` is indexed; `light_metadata` (users, login history) is recognized and skipped without an error. Re-importing is safe — conversations already imported are skipped by uuid. |
+| claude.ai download manifest | `manifest-….json` | The small JSON the export page hands over, pointing at one **single-use** download URL per category. Drop it on the Import window and Recall shows what it would fetch; nothing is opened until you say yes. On yes it opens each link in your **default browser** — the browser holds the claude.ai session, Recall never touches a cookie or a credential — strictly one at a time, waits for each zip to finish landing in `~/Downloads`, imports it, then moves to the next. The server takes 60–120s to build each zip, so waits are long by design; opening links in parallel cancels the download in flight and burns the link for good. A link that times out is reported, never retried. The zips stay in `~/Downloads`. `recall import manifest-….json` lists the files; add `--download` to run the same flow from the terminal. |
 
 Every reader is isolated and covered by a fixture test. These are private storage
 formats that change without notice; when one does, the failing fixture tells you
@@ -164,6 +165,9 @@ recall recent [--limit N] [--source ID] [--since 7d] [--json]
 recall export <conversation-id> [--summary] [--out FILE]
 recall status
 recall import ~/Downloads/export.zip        # ChatGPT or claude.ai, detected from the file
+recall import ~/Downloads/conversations-000.zip ~/Downloads/memories-000.zip [--to DIR]
+recall import ~/Downloads                   # every export zip in a folder, merged
+recall import ~/Downloads/manifest-….json [--download] [--downloads DIR] [--timeout SEC]
 ```
 
 `--json` makes `recall search` and `recall recent` scriptable. `--no-embeddings`

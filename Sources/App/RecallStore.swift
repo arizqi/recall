@@ -30,6 +30,12 @@ final class RecallStore: ObservableObject {
     @Published private(set) var isExporting = false
     @Published private(set) var isImporting = false
     @Published private(set) var lastImport: ExportImporter.Result?
+    /// A dropped claude.ai manifest, waiting for the user to say yes. Nothing is
+    /// downloaded — no URL is opened at all — until `startManifestDownloads()`.
+    @Published private(set) var pendingManifest: ExportManifest?
+    @Published private(set) var manifestProgress: [ManifestFileProgress] = []
+    @Published private(set) var manifestSummary: ManifestRunSummary?
+    @Published private(set) var isRunningManifest = false
     /// Tests drive the same code path without a modal blocking the run loop.
     var showsDialogs = true
     /// True while a file is hovering over the window, so the drop target is visible
@@ -44,19 +50,34 @@ final class RecallStore: ObservableObject {
     private let embedder: any Embedder
     /// Injectable so tests never write into the real imports directory.
     private let importsDirectory: URL
+    /// The folder the browser downloads into, watched during a manifest run.
+    /// Injectable for the same reason.
+    let downloadsDirectory: URL
+    /// How a single-use export URL reaches the browser. The browser holds the
+    /// claude.ai session; Recall never sees a cookie or a credential. Injected so a
+    /// test can assert the ordering without opening anything.
+    var openURL: @Sendable (URL) -> Void = { url in
+        DispatchQueue.main.async { NSWorkspace.shared.open(url) }
+    }
+    /// Generous by default: the server takes 60–120s to build each zip.
+    var downloadWatcher = DownloadWatcher(directory: Paths.downloads)
     private var searchTask: Task<Void, Never>?
     private var indexTask: Task<Void, Never>?
     private var statusResetTask: Task<Void, Never>?
+    private var manifestTask: Task<Void, Never>?
 
     /// The index location and embedder are injectable so tests can drive the real
     /// view against a temporary index without a model.
     init(
         indexURL: URL = Paths.indexDatabase,
         embedder: any Embedder = OllamaEmbedder(),
-        importsDirectory: URL = Paths.imports
+        importsDirectory: URL = Paths.imports,
+        downloadsDirectory: URL = Paths.downloads
     ) {
         self.embedder = embedder
         self.importsDirectory = importsDirectory
+        self.downloadsDirectory = downloadsDirectory
+        downloadWatcher = DownloadWatcher(directory: downloadsDirectory)
         Paths.ensureDirectories()
         do {
             store = try IndexStore(url: indexURL)
@@ -149,21 +170,26 @@ final class RecallStore: ObservableObject {
 
     /// Drag in either vendor's account export, or pick it from the panel; the format
     /// is detected from the file, not from what the user said it was.
+    ///
+    /// Several files at once is a normal case now: claude.ai ships one zip per
+    /// category, and a big account splits each category into numbered parts. They are
+    /// merged into one import so the summary counts the export, not the downloads.
     @discardableResult
-    func importExport(at url: URL) -> Task<Void, Never>? {
-        guard !isImporting else { return nil }
+    func importExport(at urls: [URL]) -> Task<Void, Never>? {
+        guard !isImporting, !urls.isEmpty else { return nil }
         isImporting = true
         failure = nil
-        note("Reading \(url.lastPathComponent)…")
+        note(urls.count == 1 ? "Reading \(urls[0].lastPathComponent)…" : "Reading \(urls.count) files…")
         let destination = importsDirectory
         return Task.detached(priority: .userInitiated) {
             do {
-                let result = try ExportImporter(destination: destination).importArchive(at: url)
+                let result = try ExportImporter(destination: destination).importArchives(at: urls)
                 await MainActor.run {
                     self.isImporting = false
                     self.lastImport = result
                     self.note("\(result.headline) — indexing…")
                     self.announceImport(result)
+                    guard result.file != nil else { return }
                     // Only the imports directory needs a pass; the other sources have
                     // not changed and a full scan would make a fast action feel slow.
                     self.index(only: [NormalizedJSONLSource(id: RecallSource.imports, root: destination)])
@@ -172,11 +198,17 @@ final class RecallStore: ObservableObject {
                 await MainActor.run {
                     self.isImporting = false
                     self.failure = error.localizedDescription
-                    self.reportImportFailure(url: url, error: error)
+                    self.reportImportFailure(
+                        name: urls.count == 1 ? urls[0].lastPathComponent : "\(urls.count) files",
+                        error: error
+                    )
                 }
             }
         }
     }
+
+    @discardableResult
+    func importExport(at url: URL) -> Task<Void, Never>? { importExport(at: [url]) }
 
     /// An import that produced nothing used to leave an empty file and a silent UI.
     /// Both outcomes are now modal, because an import you cannot see the result of is
@@ -192,18 +224,18 @@ final class RecallStore: ObservableObject {
         alert.messageText = result.headline
         alert.informativeText = result.detail
         alert.addButton(withTitle: "OK")
-        alert.addButton(withTitle: "Show imported")
-        if alert.runModal() == .alertSecondButtonReturn {
-            NSWorkspace.shared.activateFileViewerSelecting([result.file])
+        if result.file != nil { alert.addButton(withTitle: "Show imported") }
+        if alert.runModal() == .alertSecondButtonReturn, let file = result.file {
+            NSWorkspace.shared.activateFileViewerSelecting([file])
         }
     }
 
-    private func reportImportFailure(url: URL, error: Error) {
+    private func reportImportFailure(name: String, error: Error) {
         guard showsDialogs else { return }
         if NSApp.windows.contains(where: { $0.title == "Import export" && $0.isVisible }) { return }
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "Nothing was imported from \(url.lastPathComponent)"
+        alert.messageText = "Nothing was imported from \(name)"
         alert.informativeText = error.localizedDescription
         alert.addButton(withTitle: "OK")
         alert.runModal()
@@ -220,36 +252,151 @@ final class RecallStore: ObservableObject {
     }
 
     /// Presents the open panel as a sheet on the given window, which cannot slip
-    /// behind its host. Zips and a bare `conversations.json` are both accepted
-    /// because people unzip exports before they think to import them.
+    /// behind its host. Zips, a bare `conversations.json`, a manifest and a folder of
+    /// downloaded category zips are all accepted, because people unzip exports —
+    /// or download five of them — before they think to import.
     func chooseExportSheet(on window: NSWindow?) {
-        ImportPanel.presentSheet(on: window) { [weak self] url in
-            guard let self, let url else { return }
-            self.receive(url)
+        ImportPanel.presentSheet(on: window) { [weak self] urls in
+            guard let self, !urls.isEmpty else { return }
+            self.receive(urls)
         }
     }
 
-    /// Accepts a dropped file. `loadObject(ofClass: URL.self)` silently fails for
+    /// Accepts dropped files. `loadObject(ofClass: URL.self)` silently fails for
     /// Finder drags on macOS; the file-URL type identifier is the reliable path.
+    /// Every provider is collected before anything is decided, so dropping the five
+    /// category zips together is one import rather than five races.
     func acceptDrop(_ providers: [NSItemProvider]) -> Bool {
-        guard let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) })
-        else { return false }
-        _ = provider.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, _ in
-            guard let data, let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
-            Task { @MainActor in self.receive(url) }
+        let fileProviders = providers.filter {
+            $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
+        }
+        guard !fileProviders.isEmpty else { return false }
+        let collector = DropCollector(expected: fileProviders.count)
+        for provider in fileProviders {
+            _ = provider.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, _ in
+                let url = data.flatMap { URL(dataRepresentation: $0, relativeTo: nil) }
+                Task { @MainActor in
+                    if let urls = collector.add(url) { self.receive(urls) }
+                }
+            }
         }
         return true
+    }
+
+    /// Counts a drop in so all of its files arrive together. Main-actor only.
+    @MainActor
+    private final class DropCollector {
+        private var urls: [URL] = []
+        private var remaining: Int
+        init(expected: Int) { remaining = expected }
+
+        /// Returns the whole drop once the last provider has reported.
+        func add(_ url: URL?) -> [URL]? {
+            if let url { urls.append(url) }
+            remaining -= 1
+            guard remaining <= 0, !urls.isEmpty else { return nil }
+            return urls
+        }
     }
 
     /// Handles one dropped or picked file. Split out from the drop plumbing so the
     /// decision — is this an export? — is testable without an NSItemProvider.
     @discardableResult
-    func receive(_ url: URL) -> Task<Void, Never>? {
-        guard ["zip", "json"].contains(url.pathExtension.lowercased()) else {
-            failure = "\(url.lastPathComponent) is not an export zip or conversations.json."
+    func receive(_ url: URL) -> Task<Void, Never>? { receive([url]) }
+
+    @discardableResult
+    func receive(_ urls: [URL]) -> Task<Void, Never>? {
+        // A manifest is a plan, not data: it gets a confirmation, never an import.
+        if urls.count == 1, let manifest = ExportManifest.parse(contentsOf: urls[0]) {
+            presentManifest(manifest)
             return nil
         }
-        return importExport(at: url)
+        let usable = urls.filter { isImportable($0) }
+        guard !usable.isEmpty else {
+            let name = urls.count == 1 ? urls[0].lastPathComponent : "Those files"
+            failure = "\(name) is not an export zip, a conversations.json, or a folder of export zips."
+            return nil
+        }
+        return importExport(at: usable)
+    }
+
+    private func isImportable(_ url: URL) -> Bool {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return false }
+        if isDirectory.boolValue { return true }
+        return ["zip", "json"].contains(url.pathExtension.lowercased())
+    }
+
+    // MARK: - Manifest
+
+    /// Shows what the manifest would download. Deliberately does nothing else: each
+    /// URL in it works exactly once, so opening one has to be the user's decision.
+    func presentManifest(_ manifest: ExportManifest) {
+        failure = nil
+        lastImport = nil
+        pendingManifest = manifest
+        manifestSummary = nil
+        manifestProgress = manifest.files.map { ManifestFileProgress(file: $0, state: .waiting) }
+        ImportWindowController.shared.present(store: self)
+    }
+
+    /// The user said yes. Opens each export URL in the default browser one at a time,
+    /// waits for the zip to land in Downloads, imports it, then moves on.
+    @discardableResult
+    func startManifestDownloads() -> Task<Void, Never>? {
+        guard let manifest = pendingManifest, !isRunningManifest else { return nil }
+        isRunningManifest = true
+        failure = nil
+        manifestSummary = nil
+        manifestProgress = manifest.files.map { ManifestFileProgress(file: $0, state: .waiting) }
+        note("Opening \(manifest.files.count) download links, one at a time…")
+
+        let importer = ManifestImporter(
+            manifest: manifest,
+            downloads: downloadsDirectory,
+            destination: importsDirectory,
+            watcher: downloadWatcher,
+            opener: openURL
+        )
+        let destination = importsDirectory
+        // Detached: watching a folder for five large downloads must never run on the
+        // main actor, which a plain `Task` inside this @MainActor class would.
+        manifestTask = Task.detached(priority: .userInitiated) {
+            let summary = await importer.run { progress in
+                Task { @MainActor in self.apply(progress) }
+            }
+            await MainActor.run {
+                self.isRunningManifest = false
+                self.manifestSummary = summary
+                self.note("\(summary.headline) · \(summary.detail)")
+                guard summary.indexedAnything else { return }
+                self.index(only: [NormalizedJSONLSource(id: RecallSource.imports, root: destination)])
+            }
+        }
+        return manifestTask
+    }
+
+    private func apply(_ progress: ManifestFileProgress) {
+        if let index = manifestProgress.firstIndex(where: { $0.id == progress.id }) {
+            manifestProgress[index] = progress
+        } else {
+            manifestProgress.append(progress)
+        }
+    }
+
+    /// Stops after the file in flight. The statuses stay on screen: a run that was
+    /// interrupted mid-download is exactly the thing the user needs to see.
+    func stopManifestDownloads() {
+        manifestTask?.cancel()
+        manifestTask = nil
+        isRunningManifest = false
+    }
+
+    func dismissManifest() {
+        stopManifestDownloads()
+        pendingManifest = nil
+        manifestProgress = []
+        manifestSummary = nil
     }
 
     // MARK: - Search

@@ -13,6 +13,13 @@ enum Paths {
     static var imports: URL { applicationSupport.appendingPathComponent("imports") }
     static var indexDatabase: URL { applicationSupport.appendingPathComponent("index.db") }
 
+    /// Where the browser puts a claude.ai export. Recall only ever reads it — the
+    /// zips stay put, they are the user's files.
+    static var downloads: URL {
+        FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+            ?? home.appendingPathComponent("Downloads")
+    }
+
     static var claudeCodeProjects: URL { home.appendingPathComponent(".claude/projects") }
     static var coworkSessions: URL {
         home.appendingPathComponent("Library/Application Support/Claude/local-agent-mode-sessions")

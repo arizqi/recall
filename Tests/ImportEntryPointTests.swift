@@ -51,7 +51,7 @@ final class ImportEntryPointTests: XCTestCase {
         XCTAssertNil(store.failure)
         await task?.value
         XCTAssertEqual(store.lastImport?.conversations, 1)
-        XCTAssertEqual(store.lastImport?.file.deletingLastPathComponent().lastPathComponent, "imports")
+        XCTAssertEqual(store.lastImport?.file?.deletingLastPathComponent().lastPathComponent, "imports")
         XCTAssertTrue(
             FileManager.default.fileExists(atPath: root.appendingPathComponent("imports").path),
             "the import landed in the injected directory, not the real one"

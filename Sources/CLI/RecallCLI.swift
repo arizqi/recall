@@ -18,7 +18,7 @@ struct RecallCLI {
             case "export": try await export(options)
             case "status": try status(options)
             case "recent": try recent(options)
-            case "import", "import-chatgpt", "import-claude": try importExport(options)
+            case "import", "import-chatgpt", "import-claude": try await importExport(options)
             case "help", "--help", "-h": print(usage)
             default:
                 FileHandle.standardError.write(Data("Unknown command: \(command)\n\n\(usage)\n".utf8))
@@ -39,7 +39,15 @@ struct RecallCLI {
       recall recent [--limit N] [--source ID] [--since D] [--until D] [--json]
       recall export <conversation-id> [--summary] [--out FILE]
       recall status
-      recall import <export.zip>          ChatGPT or claude.ai account export
+      recall import <export.zip> [more.zip …] [--to DIR]
+                            ChatGPT or claude.ai account export.
+                            Accepts the per-category zips (conversations-000.zip,
+                            projects-000.zip, memories-000.zip, …), a folder of them,
+                            or a bare conversations.json.
+      recall import <manifest.json> [--download] [--downloads DIR] [--timeout SEC]
+                            A claude.ai download manifest. Lists the files; with
+                            --download, opens each single-use link in your browser
+                            one at a time and imports each zip as it lands.
 
     Dates are `2026-08-19` or a relative span: `7d`, `2w`, `3m`, `1y`.
     Results are newest-first unless you pass `--sort relevance`.
@@ -185,13 +193,81 @@ struct RecallCLI {
         }
     }
 
-    static func importExport(_ options: Options) throws {
-        guard let path = options.positional.first else { throw CLIError.usage("import needs a path to an export") }
-        let url = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
-        let result = try ExportImporter().importArchive(at: url)
+    /// Accepts one export, several category zips, or the folder holding them. A
+    /// claude.ai download manifest is recognized and, by default, only described:
+    /// its links are single-use, so opening them is an explicit `--download`.
+    static func importExport(_ options: Options) async throws {
+        guard !options.positional.isEmpty else {
+            throw CLIError.usage("import needs a path to an export")
+        }
+        let urls = options.positional.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
+
+        if urls.count == 1, let manifest = ExportManifest.parse(contentsOf: urls[0]) {
+            try await runManifest(manifest, options: options)
+            return
+        }
+
+        // `--to` keeps a trial import out of the real bus directory.
+        let destination = options.value("to").map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
+            ?? Paths.imports
+        let result = try ExportImporter(destination: destination).importArchives(at: urls)
+        guard let file = result.file else {
+            print(result.headline)
+            print(result.detail)
+            return
+        }
         print("Imported \(result.conversations) \(RecallSource.label(result.kind.source)) conversations "
-            + "(\(result.events) events) → \(result.file.path)")
+            + "(\(result.events) events) → \(file.path)")
+        print(result.detail)
         print("Run `recall index` to embed them.")
+    }
+
+    /// Walks a manifest one link at a time: open in the browser, wait for the zip to
+    /// land in Downloads, import it, then the next. Never in parallel and never
+    /// retried — each URL works exactly once, and opening the next one while a
+    /// download is still running kills it.
+    static func runManifest(_ manifest: ExportManifest, options: Options) async throws {
+        print("claude.ai export manifest · \(manifest.files.count) file(s)"
+            + (manifest.createdAt.map { " · created \(DateFormatter.minute.string(from: $0))" } ?? ""))
+        for file in manifest.files {
+            print("  \(file.filename)\(file.isIndexable ? "" : "   (account settings — not indexed)")")
+        }
+        guard options.flag("download") else {
+            print("")
+            print("Each link can be used once. Pass --download to open them in your default")
+            print("browser, one at a time, and import each zip as it lands in Downloads.")
+            return
+        }
+
+        let downloads = options.value("downloads").map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
+            ?? Paths.downloads
+        let importer = ManifestImporter(
+            manifest: manifest,
+            downloads: downloads,
+            destination: Paths.imports,
+            watcher: DownloadWatcher(
+                directory: downloads,
+                timeout: options.value("timeout").flatMap(TimeInterval.init) ?? 300
+            ),
+            opener: { url in
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+                process.arguments = [url.absoluteString]
+                try? process.run()
+            }
+        )
+        print("")
+        let summary = await importer.run { progress in
+            let detail = progress.state.detail.map { " — \($0)" } ?? ""
+            print("  [\(progress.state.label)] \(progress.file.filename)\(detail)")
+        }
+        print("")
+        print("\(summary.headline) · \(summary.detail)")
+        if !summary.failed.isEmpty {
+            print("Failed: \(summary.failed.joined(separator: ", "))")
+            print("Those links are single-use and may now be burned — request a new export.")
+        }
+        print("Run `recall index` to embed what landed.")
     }
 
     static func recent(_ options: Options) throws {
@@ -267,7 +343,9 @@ struct RecallCLI {
             }
         }
 
-        private static let valued: Set<String> = ["limit", "source", "out", "max-files", "since", "until", "sort"]
+        private static let valued: Set<String> = [
+            "limit", "source", "out", "max-files", "since", "until", "sort", "downloads", "timeout", "to",
+        ]
 
         func flag(_ name: String) -> Bool { flags.contains(name) }
         func value(_ name: String) -> String? { values[name] }

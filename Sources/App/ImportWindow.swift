@@ -72,18 +72,21 @@ private final class ImportWindowDelegate: NSObject, NSWindowDelegate {
 /// Presents `NSOpenPanel` as a sheet on a given window. A sheet is owned by its
 /// window and cannot slip behind it, which is the whole point.
 enum ImportPanel {
-    static func presentSheet(on window: NSWindow?, completion: @escaping (URL?) -> Void) {
+    static func presentSheet(on window: NSWindow?, completion: @escaping ([URL]) -> Void) {
         let panel = NSOpenPanel()
         panel.title = "Import a ChatGPT or claude.ai export"
         panel.prompt = "Import"
-        panel.message = "Choose an export .zip or a conversations.json"
+        panel.message = "Choose an export .zip, a conversations.json, a download manifest, "
+            + "or the folder holding the category zips"
         panel.allowedContentTypes = [.zip, .json]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
+        // claude.ai now ships one zip per category, and splits big categories into
+        // numbered parts — so several files, or the folder holding them, is normal.
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = true
 
         if let window {
             panel.beginSheetModal(for: window) { response in
-                completion(response == .OK ? panel.url : nil)
+                completion(response == .OK ? panel.urls : [])
             }
         } else {
             // No host window (e.g. the very first click): make the panel itself the
@@ -91,7 +94,7 @@ enum ImportPanel {
             NSApp.activate(ignoringOtherApps: true)
             panel.level = .modalPanel
             panel.makeKeyAndOrderFront(nil)
-            completion(panel.runModal() == .OK ? panel.url : nil)
+            completion(panel.runModal() == .OK ? panel.urls : [])
         }
     }
 }

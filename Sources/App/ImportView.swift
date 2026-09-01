@@ -13,20 +13,26 @@ struct ImportView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            header
-            dropZone
-            if let result = store.lastImport {
-                importedSummary(result)
-            } else if store.isImporting {
-                progress
-            } else if let failure = store.failure {
-                Label(failure, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            // A dropped manifest takes the window over: it needs a yes/no, and the
+            // drop zone would only invite a second irreversible action.
+            if let manifest = store.pendingManifest {
+                ManifestImportView(store: store, manifest: manifest, onClose: onClose)
+            } else {
+                header
+                dropZone
+                if let result = store.lastImport {
+                    importedSummary(result)
+                } else if store.isImporting {
+                    progress
+                } else if let failure = store.failure {
+                    Label(failure, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                Spacer()
+                footer
             }
-            Spacer()
-            footer
         }
         .padding(20)
         .frame(minWidth: 460, minHeight: 420)
@@ -37,7 +43,8 @@ struct ImportView: View {
     private var header: some View {
         VStack(spacing: 4) {
             Text("Import export").font(.title2.weight(.semibold))
-            Text("ChatGPT or claude.ai account export — a .zip, or a bare conversations.json")
+            Text("ChatGPT or claude.ai account export — the category zips, a download "
+                + "manifest, a bare conversations.json, or the folder holding them")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -82,13 +89,17 @@ struct ImportView: View {
 
     private func importedSummary(_ result: ExportImporter.Result) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label(result.headline, systemImage: "checkmark.circle.fill")
+            // An account-metadata-only zip is a recognized part of the export with
+            // nothing in it to index — reported, not celebrated and not an error.
+            Label(result.headline, systemImage: result.isMetadataOnly ? "minus.circle" : "checkmark.circle.fill")
                 .font(.headline)
-                .foregroundStyle(.green)
+                .foregroundStyle(result.isMetadataOnly ? Color.secondary : Color.green)
             Text(result.detail).font(.caption).foregroundStyle(.secondary)
             HStack {
-                Button("Show imported") {
-                    NSWorkspace.shared.activateFileViewerSelecting([result.file])
+                if let file = result.file {
+                    Button("Show imported") {
+                        NSWorkspace.shared.activateFileViewerSelecting([file])
+                    }
                 }
                 if store.isIndexing {
                     HStack(spacing: 6) {

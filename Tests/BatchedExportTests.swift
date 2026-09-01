@@ -173,7 +173,8 @@ final class BatchedExportTests: XCTestCase {
         XCTAssertTrue(result.detail.contains("design chats"))
         XCTAssertTrue(result.detail.contains("no message text"))
 
-        let reread = NormalizedJSONLSource(id: RecallSource.imports, root: destination).events(in: result.file)
+        let reread = NormalizedJSONLSource(id: RecallSource.imports, root: destination)
+            .events(in: try XCTUnwrap(result.file))
         XCTAssertEqual(reread.count, result.events)
         XCTAssertTrue(reread.allSatisfy { $0.source == RecallSource.claudeAI })
     }

@@ -64,8 +64,9 @@ final class ExportImportTests: XCTestCase {
         XCTAssertEqual(result.conversations, 1)
         XCTAssertEqual(result.events, 2)
 
-        let reread = NormalizedJSONLSource(id: RecallSource.imports, root: result.file.deletingLastPathComponent())
-            .events(in: result.file)
+        let file = try XCTUnwrap(result.file)
+        let reread = NormalizedJSONLSource(id: RecallSource.imports, root: file.deletingLastPathComponent())
+            .events(in: file)
         XCTAssertEqual(reread.map(\.text), ["summarize the roadmap", "Here is the roadmap summary."])
         XCTAssertEqual(reread[0].source, RecallSource.claudeAI, "the badge survives the round trip")
     }
