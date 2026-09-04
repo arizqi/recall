@@ -6,6 +6,9 @@ Native macOS menu-bar app plus a `recall` CLI. Everything runs on this machine:
 embeddings and summaries come from Ollama on `127.0.0.1:11434`, the index is a
 SQLite file in Application Support, and nothing is ever uploaded.
 
+Recall is early-stage software for macOS 14 and later. Build it from source;
+prebuilt, signed releases are not available yet.
+
 ## What it does
 
 - Indexes Claude Code, the ChatGPT desktop app, Cowork, agent rooms, a drop-in
@@ -226,3 +229,12 @@ Drag-and-drop onto the main window still works too.
   folder prompt for every source.
 - The index holds your conversations in plaintext. It lives in your home directory
   under normal file permissions; treat `index.db` like the transcripts themselves.
+
+## Contributing and security
+
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening
+a pull request. Please report vulnerabilities privately as described in
+[SECURITY.md](SECURITY.md), especially if a report could expose transcript data or
+local filesystem paths.
+
+Recall is available under the [MIT License](LICENSE).

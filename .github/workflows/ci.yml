@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Check generated project
+        run: git diff --exit-code -- Recall.xcodeproj
+      - name: Run tests
+        run: >-
+          xcodebuild -project Recall.xcodeproj -scheme Recall
+          -destination 'platform=macOS' -derivedDataPath DerivedData
+          CODE_SIGNING_ALLOWED=NO test
