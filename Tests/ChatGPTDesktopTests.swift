@@ -55,6 +55,23 @@ final class ChatGPTDesktopTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: file), before, "sources are read-only")
     }
 
+    func testReadsLatestTurnsBeyondTheFormerFourMegabytePrefix() throws {
+        let metadata = #"{"timestamp":"2026-09-01T17:00:00.000Z","type":"session_meta","payload":{"session_id":"long-running","cwd":"/Users/example/widget","source":"vscode"}}"# + "\n"
+        let firstTurn = #"{"timestamp":"2026-09-01T17:00:01.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Start the long-running task."}]}}"# + "\n"
+        let ignored = #"{"timestamp":"2026-09-01T17:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total":12}}}"# + "\n"
+        let legacyLimit = 4 * 1_024 * 1_024
+        let filler = String(repeating: ignored, count: legacyLimit / ignored.utf8.count + 1)
+        let latestTurn = #"{"timestamp":"2026-09-21T14:30:35.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"The latest result is ready."}]}}"# + "\n"
+        let contents = metadata + firstTurn + filler + latestTurn
+        XCTAssertGreaterThan(contents.utf8.count, legacyLimit)
+        let file = try write("rollout-long-running.jsonl", contents)
+
+        let events = source().events(in: file)
+
+        XCTAssertEqual(events.map(\.text), ["Start the long-running task.", "The latest result is ready."])
+        XCTAssertEqual(events.last?.ts, Timestamps.date("2026-09-21T14:30:35.000Z"))
+    }
+
     /// Both streams carry the same turns; indexing both would double every message.
     func testUIEventStreamDoesNotDuplicateTheMessageList() throws {
         let file = try write("rollout-2026-08-01T19-30-00-sess-dup.jsonl", #"""

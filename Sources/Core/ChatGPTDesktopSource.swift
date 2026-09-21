@@ -30,10 +30,6 @@ struct ChatGPTDesktopSource: EventSource {
         }
     }
 
-    /// Desktop sessions run far longer than a chat: this bounds one conversation's
-    /// read the way `JSONLReader.defaultByteLimit` bounds a Claude Code session.
-    static let byteLimit = 4 * 1_024 * 1_024
-
     func discover() -> [SourceFile] {
         jsonlFiles(directDescendantsOnly: false)
             .filter { $0.url.lastPathComponent.hasPrefix("rollout-") }
@@ -49,7 +45,13 @@ struct ChatGPTDesktopSource: EventSource {
         var responseItems: [Turn] = []
         var uiStream: [Turn] = []
 
-        JSONLReader.forEachLine(at: file, byteLimit: Self.byteLimit) { data in
+        // Use the shared streaming reader's runaway guard. A desktop session can
+        // remain active for weeks and grow well beyond 4 MB; a smaller prefix-only
+        // cap makes its newest turns permanently invisible even after reindexing.
+        JSONLReader.forEachLine(at: file) { data in
+            // Rollouts are mostly token counters and tool plumbing. Reject those
+            // lines before JSON decoding so scanning the complete file stays fast.
+            guard Self.mightContainConversationData(data) else { return true }
             guard let row = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let type = row["type"] as? String,
                   let payload = row["payload"] as? [String: Any]
@@ -126,6 +128,20 @@ struct ChatGPTDesktopSource: EventSource {
             fallbackTitle: project.map { "ChatGPT — \($0)" } ?? "ChatGPT session",
             file: file
         )
+    }
+
+    private static let sessionMetaMarker = Data(#""session_meta""#.utf8)
+    private static let responseItemMarker = Data(#""response_item""#.utf8)
+    private static let messageMarker = Data(#""message""#.utf8)
+    private static let userMessageMarker = Data(#""user_message""#.utf8)
+    private static let agentMessageMarker = Data(#""agent_message""#.utf8)
+
+    private static func mightContainConversationData(_ data: Data) -> Bool {
+        if data.range(of: sessionMetaMarker) != nil { return true }
+        if data.range(of: responseItemMarker) != nil,
+           data.range(of: messageMarker) != nil { return true }
+        return data.range(of: userMessageMarker) != nil
+            || data.range(of: agentMessageMarker) != nil
     }
 
     private struct Turn {
