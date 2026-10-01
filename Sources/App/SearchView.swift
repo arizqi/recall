@@ -8,7 +8,7 @@ struct SearchView: View {
 
     @MainActor
     init() {
-        _store = StateObject(wrappedValue: RecallStore())
+        _store = StateObject(wrappedValue: RecallStore(automaticIndexInterval: .seconds(600)))
     }
 
     @MainActor

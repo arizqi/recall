@@ -48,6 +48,7 @@ final class RecallStore: ObservableObject {
 
     private var store: IndexStore?
     private let embedder: any Embedder
+    private let sources: [any EventSource]
     /// Injectable so tests never write into the real imports directory.
     private let importsDirectory: URL
     /// The folder the browser downloads into, watched during a manifest run.
@@ -63,6 +64,7 @@ final class RecallStore: ObservableObject {
     var downloadWatcher = DownloadWatcher(directory: Paths.downloads)
     private var searchTask: Task<Void, Never>?
     private var indexTask: Task<Void, Never>?
+    private var automaticIndexTask: Task<Void, Never>?
     private var statusResetTask: Task<Void, Never>?
     private var manifestTask: Task<Void, Never>?
 
@@ -72,9 +74,12 @@ final class RecallStore: ObservableObject {
         indexURL: URL = Paths.indexDatabase,
         embedder: any Embedder = OllamaEmbedder(),
         importsDirectory: URL = Paths.imports,
-        downloadsDirectory: URL = Paths.downloads
+        downloadsDirectory: URL = Paths.downloads,
+        sources: [any EventSource] = Paths.defaultSources(),
+        automaticIndexInterval: Duration? = nil
     ) {
         self.embedder = embedder
+        self.sources = sources
         self.importsDirectory = importsDirectory
         self.downloadsDirectory = downloadsDirectory
         downloadWatcher = DownloadWatcher(directory: downloadsDirectory)
@@ -85,6 +90,9 @@ final class RecallStore: ObservableObject {
             failure = error.localizedDescription
         }
         refreshStats()
+        if let automaticIndexInterval, automaticIndexInterval > .zero {
+            startAutomaticIndexing(every: automaticIndexInterval)
+        }
     }
 
     var indexStore: IndexStore? { store }
@@ -94,7 +102,7 @@ final class RecallStore: ObservableObject {
     func refreshStats() {
         guard let store else { return }
         stats = store.stats()
-        missingSources = Paths.defaultSources()
+        missingSources = sources
             .filter { !FileManager.default.fileExists(atPath: $0.root.path) }
             .map(\.displayName)
         refreshRecent()
@@ -142,7 +150,7 @@ final class RecallStore: ObservableObject {
             }
             let indexer = Indexer(store: store, embedder: embedder)
             let report = await indexer.run(
-                sources: only ?? Paths.defaultSources(),
+                sources: only ?? sources,
                 options: IndexOptions(force: force),
                 progress: { [weak self] progress in
                     Task { @MainActor in
@@ -166,6 +174,23 @@ final class RecallStore: ObservableObject {
         indexTask?.cancel()
         isIndexing = false
         indexProgress = nil
+    }
+
+    /// Run an incremental pass immediately, then periodically while the menu-bar
+    /// app remains alive. IndexStore's mtime + size checks make idle passes cheap.
+    private func startAutomaticIndexing(every interval: Duration) {
+        automaticIndexTask?.cancel()
+        automaticIndexTask = Task { [weak self] in
+            self?.index()
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: interval)
+                } catch {
+                    return
+                }
+                self?.index()
+            }
+        }
     }
 
     /// Drag in either vendor's account export, or pick it from the panel; the format

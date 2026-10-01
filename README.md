@@ -19,6 +19,7 @@ prebuilt, signed releases are not available yet.
 - One-click markdown export — full transcript or a local summary — with an
   `Artifacts:` list of real paths. `⇧⌘C` copies it.
 - Incremental: only files whose mtime or size changed are re-read.
+- Automatic: an incremental pass runs at launch and every 10 minutes while Recall is open.
 
 ## Sources
 

@@ -19,6 +19,7 @@
 		418C38F70B1EC68B2D0B0322 /* TranscriptRowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD279841C6D69DEBDFF9C20B /* TranscriptRowTests.swift */; };
 		48FE634F71218402B4BAF648 /* ChatGPTDesktopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7F3DDB39E3F5EFA08A780F9 /* ChatGPTDesktopTests.swift */; };
 		4ABE90BA317302BB1322E291 /* ExportFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44854F7B6F44488CB827EE35 /* ExportFormatter.swift */; };
+		5460F6ABBC776BCE63D846C1 /* AutomaticIndexTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A2F092342D374A7CB3E4FF9 /* AutomaticIndexTests.swift */; };
 		585D3E3005B048B8B4A21988 /* TranscriptRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C792FF0EADD55230D12AEE58 /* TranscriptRow.swift */; };
 		59AEBD5F63921F2FBB4290BD /* Paths.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D7216DA64F19CE4F8476A99 /* Paths.swift */; };
 		5B710D6ED51E30887AFF3B53 /* ImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79E5092359C5E4DBDEB97A63 /* ImportView.swift */; };
@@ -94,6 +95,7 @@
 		30E1258AD9D8EDA0A98134FD /* ExportManifest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportManifest.swift; sourceTree = "<group>"; };
 		38145DCB5023513656F2D0A3 /* BatchedExportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatchedExportTests.swift; sourceTree = "<group>"; };
 		386BC52DACE1E524C163517B /* SearchEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchEngine.swift; sourceTree = "<group>"; };
+		3A2F092342D374A7CB3E4FF9 /* AutomaticIndexTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomaticIndexTests.swift; sourceTree = "<group>"; };
 		3D615D99164146464E8CA44F /* Chunker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Chunker.swift; sourceTree = "<group>"; };
 		44854F7B6F44488CB827EE35 /* ExportFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportFormatter.swift; sourceTree = "<group>"; };
 		49D17A6EAF27B5F4FCF247A6 /* ChatGPTDesktopSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTDesktopSource.swift; sourceTree = "<group>"; };
@@ -202,6 +204,7 @@
 		C27EDBEBDD8FEF88155F4C06 /* Tests */ = {
 			isa = PBXGroup;
 			children = (
+				3A2F092342D374A7CB3E4FF9 /* AutomaticIndexTests.swift */,
 				38145DCB5023513656F2D0A3 /* BatchedExportTests.swift */,
 				F88D7A5AEFFA34BEB13B94E7 /* CategoryExportTests.swift */,
 				B7F3DDB39E3F5EFA08A780F9 /* ChatGPTDesktopTests.swift */,
@@ -329,6 +332,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5460F6ABBC776BCE63D846C1 /* AutomaticIndexTests.swift in Sources */,
 				69BF240B3CE257B005B7CC6D /* BatchedExportTests.swift in Sources */,
 				CE1EA1B9D00B03E7412FE80F /* CategoryExportTests.swift in Sources */,
 				48FE634F71218402B4BAF648 /* ChatGPTDesktopTests.swift in Sources */,
