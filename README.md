@@ -19,7 +19,8 @@ prebuilt, signed releases are not available yet.
 - One-click markdown export — full transcript or a local summary — with an
   `Artifacts:` list of real paths. `⇧⌘C` copies it.
 - Incremental: only files whose mtime or size changed are re-read.
-- Automatic: an incremental pass runs at launch and every 10 minutes while Recall is open.
+- Automatic: an incremental pass runs at launch and every 10 minutes while Recall
+  is running.
 
 ## Sources
 
@@ -110,6 +111,17 @@ chunk text so a retrieved fragment reads on its own.
 
 Indexing is resumable: each file commits in its own transaction and is only recorded
 once its chunks are in, so an interrupted run resumes exactly where it stopped.
+
+### Automatic indexing
+
+The menu-bar app runs an incremental index when it launches and every 10 minutes
+after that. Each pass compares file modification time and size with the stored state;
+unchanged files are not read or embedded again. Changed files are replaced atomically,
+and deleted files are removed from the index.
+
+The schedule runs for the lifetime of the Recall process, including when its popover
+is closed. Quitting Recall stops it. The **Index** button and `recall index` remain
+available for an immediate manual pass.
 
 Throughput on an M-series Mac is ~22 chunks/second, embedding-bound: a first full
 index of 155 files took 4m47s, and a rescan that finds nothing changed takes 0.2s.
