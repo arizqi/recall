@@ -7,11 +7,6 @@ struct SearchView: View {
     private let accent = Color(red: 0.30, green: 0.45, blue: 0.85)
 
     @MainActor
-    init() {
-        _store = StateObject(wrappedValue: RecallStore(automaticIndexInterval: .seconds(600)))
-    }
-
-    @MainActor
     init(store: RecallStore) {
         _store = StateObject(wrappedValue: store)
     }
